@@ -39,10 +39,12 @@ export default defineConfig(({ mode }) => ({
     }
   },
   server: {
-    // disable hmr for content scripts (csp violations)
-    hmr: {
-      protocol: 'ws',
-      host: 'localhost'
+    // disable hmr entirely - csp violations in content scripts
+    // use `npm run build -- --watch` for live reload instead
+    hmr: false,
+    watch: {
+      // watch for changes but don't inject hmr client
+      usePolling: false
     }
   },
   build: {
