@@ -1,5 +1,5 @@
 // auth service
-// byok oauth flow with mock mode for development
+// byok oauth flow with persistent token storage
 
 import { IS_DEBUG } from '@utils/constants';
 
@@ -7,11 +7,18 @@ const REDDIT_AUTH_URL = 'https://www.reddit.com/api/v1/authorize';
 const REDDIT_TOKEN_URL = 'https://www.reddit.com/api/v1/access_token';
 const REDIRECT_URL = `https://${chrome.runtime.id}.chromiumapp.org/`;
 
+const STORAGE_KEYS = {
+  ACCESS_TOKEN: 'auth_accessToken',
+  REFRESH_TOKEN: 'auth_refreshToken',
+  TOKEN_EXPIRY: 'auth_tokenExpiry',
+  CLIENT_ID: 'auth_clientId'
+} as const;
+
 /**
- * auth state stored in memory
+ * l1 cache (memory) - cleared on sw idle
  */
-let cachedToken: string | null = null;
-let tokenExpiry: number = 0;
+let memoryToken: string | null = null;
+let memoryExpiry: number = 0;
 
 /**
  * generates mock token for development
@@ -66,15 +73,81 @@ async function exchangeCodeForToken(
 }
 
 /**
+ * refreshes access token using stored refresh token
+ */
+async function refreshAccessToken(
+  clientId: string,
+  refreshToken: string
+): Promise<{ access_token: string; expires_in: number }> {
+  const credentials = btoa(`${clientId}:`);
+
+  const response = await fetch(REDDIT_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Token refresh failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * persists token data to chrome.storage.local
+ */
+async function persistTokens(
+  accessToken: string,
+  refreshToken: string,
+  expiresIn: number,
+  clientId: string
+): Promise<void> {
+  const expiry = Date.now() + (expiresIn * 1000);
+
+  // update l1 cache
+  memoryToken = accessToken;
+  memoryExpiry = expiry;
+
+  // persist to l2 storage
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.ACCESS_TOKEN]: accessToken,
+    [STORAGE_KEYS.REFRESH_TOKEN]: refreshToken,
+    [STORAGE_KEYS.TOKEN_EXPIRY]: expiry,
+    [STORAGE_KEYS.CLIENT_ID]: clientId
+  });
+}
+
+/**
+ * hydrates auth state from storage into memory
+ * call on sw wake-up
+ */
+export async function hydrateAuth(): Promise<void> {
+  const data = await chrome.storage.local.get([
+    STORAGE_KEYS.ACCESS_TOKEN,
+    STORAGE_KEYS.TOKEN_EXPIRY
+  ]);
+
+  memoryToken = data[STORAGE_KEYS.ACCESS_TOKEN] ?? null;
+  memoryExpiry = data[STORAGE_KEYS.TOKEN_EXPIRY] ?? 0;
+}
+
+/**
  * initiates oauth flow via chrome.identity
  * uses byok (user provides their own client id)
  */
 export async function authenticate(clientId: string): Promise<string> {
   // mock mode for development
   if (IS_DEBUG) {
-    cachedToken = getMockToken();
-    tokenExpiry = Date.now() + 3600000; // 1 hour
-    return cachedToken;
+    const mockToken = getMockToken();
+    await persistTokens(mockToken, 'mock_refresh', 3600, clientId);
+    return mockToken;
   }
 
   const state = crypto.randomUUID();
@@ -107,37 +180,95 @@ export async function authenticate(clientId: string): Promise<string> {
   // exchange code for token
   const tokenData = await exchangeCodeForToken(clientId, code);
 
-  cachedToken = tokenData.access_token;
-  tokenExpiry = Date.now() + (tokenData.expires_in * 1000);
+  await persistTokens(
+    tokenData.access_token,
+    tokenData.refresh_token,
+    tokenData.expires_in,
+    clientId
+  );
 
-  // store refresh token for later
-  await chrome.storage.local.set({
-    refreshToken: tokenData.refresh_token
-  });
-
-  return cachedToken;
+  return tokenData.access_token;
 }
 
 /**
- * gets current token if valid
+ * gets valid access token
+ * decision tree: L1 Cache -> L2 Storage -> Refresh Flow
  */
-export function getToken(): string | null {
-  if (IS_DEBUG && !cachedToken) {
-    cachedToken = getMockToken();
-    tokenExpiry = Date.now() + 3600000;
+export async function getToken(): Promise<string | null> {
+  // mock mode
+  if (IS_DEBUG) {
+    if (!memoryToken) {
+      const mockToken = getMockToken();
+      await persistTokens(mockToken, 'mock_refresh', 3600, 'mock_client');
+    }
+    return memoryToken;
   }
 
-  if (cachedToken && Date.now() < tokenExpiry) {
-    return cachedToken;
+  // L1: check memory cache
+  if (memoryToken && Date.now() < memoryExpiry) {
+    return memoryToken;
+  }
+
+  // L2: check storage
+  const data = await chrome.storage.local.get([
+    STORAGE_KEYS.ACCESS_TOKEN,
+    STORAGE_KEYS.REFRESH_TOKEN,
+    STORAGE_KEYS.TOKEN_EXPIRY,
+    STORAGE_KEYS.CLIENT_ID
+  ]);
+
+  const storedToken = data[STORAGE_KEYS.ACCESS_TOKEN];
+  const storedExpiry = data[STORAGE_KEYS.TOKEN_EXPIRY] ?? 0;
+  const refreshToken = data[STORAGE_KEYS.REFRESH_TOKEN];
+  const clientId = data[STORAGE_KEYS.CLIENT_ID];
+
+  // valid stored token
+  if (storedToken && Date.now() < storedExpiry) {
+    memoryToken = storedToken;
+    memoryExpiry = storedExpiry;
+    return storedToken;
+  }
+
+  // L3: refresh flow
+  if (refreshToken && clientId) {
+    try {
+      const tokenData = await refreshAccessToken(clientId, refreshToken);
+      await persistTokens(
+        tokenData.access_token,
+        refreshToken,
+        tokenData.expires_in,
+        clientId
+      );
+      return tokenData.access_token;
+    } catch (err) {
+      console.error('[sxentrie] token refresh failed:', err);
+      await clearAuth();
+      return null;
+    }
   }
 
   return null;
 }
 
 /**
- * clears auth state
+ * checks if user is authenticated
  */
-export function clearAuth(): void {
-  cachedToken = null;
-  tokenExpiry = 0;
+export async function isAuthenticated(): Promise<boolean> {
+  const token = await getToken();
+  return token !== null;
+}
+
+/**
+ * clears all auth state
+ */
+export async function clearAuth(): Promise<void> {
+  memoryToken = null;
+  memoryExpiry = 0;
+
+  await chrome.storage.local.remove([
+    STORAGE_KEYS.ACCESS_TOKEN,
+    STORAGE_KEYS.REFRESH_TOKEN,
+    STORAGE_KEYS.TOKEN_EXPIRY,
+    STORAGE_KEYS.CLIENT_ID
+  ]);
 }
