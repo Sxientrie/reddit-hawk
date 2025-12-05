@@ -102,7 +102,8 @@ export const MessageTypeSchema = z.enum([
   'UPDATE_CONFIG',
   'NEW_HIT',
   'PLAY_SOUND',
-  'KEEP_ALIVE'
+  'KEEP_ALIVE',
+  'LOG_ENTRY'
 ]);
 
 export type MessageType = z.infer<typeof MessageTypeSchema>;

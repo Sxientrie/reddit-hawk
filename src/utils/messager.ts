@@ -4,6 +4,17 @@
 import type { MessageType, RuntimeMessage, Hit, Config } from '@/types/schemas';
 
 /**
+ * log entry payload for remote logging
+ */
+export interface LogEntry {
+  level: 'info' | 'warn' | 'error';
+  source: 'content' | 'offscreen' | 'popup';
+  message: string;
+  context?: unknown;
+  timestamp: number;
+}
+
+/**
  * message payload map
  * maps message types to their expected payloads
  */
@@ -14,6 +25,7 @@ export interface MessagePayloadMap {
   NEW_HIT: Hit;
   PLAY_SOUND: { soundId: string };
   KEEP_ALIVE: { timestamp: number };
+  LOG_ENTRY: LogEntry;
 }
 
 /**
@@ -27,6 +39,7 @@ export interface MessageResponseMap {
   NEW_HIT: void;
   PLAY_SOUND: void;
   KEEP_ALIVE: void;
+  LOG_ENTRY: void;
 }
 
 /**
@@ -96,4 +109,41 @@ export function onMessage<T extends MessageType>(
 
   chrome.runtime.onMessage.addListener(listener);
   return () => chrome.runtime.onMessage.removeListener(listener);
+}
+
+/**
+ * safe json stringify - handles circular refs
+ */
+function safeStringify(obj: unknown): string {
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (_key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) return '[Circular]';
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
+/**
+ * sends remote log to service worker
+ * for centralized debugging
+ */
+export function remoteLog(
+  level: LogEntry['level'],
+  source: LogEntry['source'],
+  message: string,
+  context?: unknown
+): void {
+  const entry: LogEntry = {
+    level,
+    source,
+    message,
+    context: context ? JSON.parse(safeStringify(context)) : undefined,
+    timestamp: Date.now()
+  };
+
+  sendMessage('LOG_ENTRY', entry).catch(() => {
+    // silent fail if sw not available
+  });
 }
