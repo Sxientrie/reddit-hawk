@@ -12,14 +12,15 @@ export class ChromeStorageProxy<T> {
   #value = $state<T | undefined>(undefined);
   #initialized = $state(false);
   #key: string;
+  #readyPromise: Promise<void>;
 
   constructor(key: string, defaultValue?: T) {
     this.#key = key;
-    this.#init(defaultValue);
+    this.#readyPromise = this.#hydrate(defaultValue);
     this.#listen();
   }
 
-  async #init(defaultValue?: T) {
+  async #hydrate(defaultValue?: T): Promise<void> {
     try {
       const result = await chrome.storage.local.get(this.#key);
       this.#value = result[this.#key] ?? defaultValue;
@@ -37,10 +38,16 @@ export class ChromeStorageProxy<T> {
     });
   }
 
+  /** awaitable init - use before rendering ui */
+  get ready(): Promise<void> {
+    return this.#readyPromise;
+  }
+
   get value(): T | undefined {
     return this.#value;
   }
 
+  /** reactive check for svelte templates */
   get initialized(): boolean {
     return this.#initialized;
   }
