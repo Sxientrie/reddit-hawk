@@ -28,3 +28,8 @@ export const STORAGE_KEYS = {
   SEEN_SET: 'seenSet',
   LAST_HEARTBEAT: 'lastHeartbeat'
 } as const;
+
+// alarm names
+export const ALARM_NAME = {
+  POLLER: 'sxentrie_poller'
+} as const;

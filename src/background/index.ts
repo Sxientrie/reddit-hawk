@@ -3,7 +3,7 @@
 
 import { hydrateAuth, getAuthDebugState, isAuthenticated } from '@services/auth';
 import { getApiDebugState } from '@services/reddit-api';
-import { startPolling, stopPolling, getPollerDebugState } from './poller';
+import { startPolling, stopPolling, getPollerDebugState, handleAlarm } from './poller';
 import { onMessage, type LogEntry } from '@utils/messager';
 import { mountDebugGlobals } from '@utils/debug';
 import { IS_DEBUG } from '@utils/constants';
@@ -63,6 +63,12 @@ function registerHandlers(): void {
   // placeholder handlers for phase ii
   onMessage('KEEP_ALIVE', () => {
     // reset idle timer
+  });
+
+  // alarm handler - routes alarms to appropriate handlers
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    log.bg.debug('alarm fired:', alarm.name);
+    handleAlarm(alarm);
   });
 
   // icon click -> inject content script and toggle overlay
