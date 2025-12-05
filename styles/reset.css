@@ -1,6 +1,7 @@
 /* shadow dom reset
-   targets :host for shadow root isolation */
+   replaces tailwind preflight - strictly scoped to :host */
 
+/* base reset for shadow root */
 :host {
   all: initial;
   display: block;
@@ -10,32 +11,105 @@
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  tab-size: 4;
+  -webkit-text-size-adjust: 100%;
 }
 
+/* universal box-sizing */
 :host *,
 :host *::before,
 :host *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  border: 0 solid transparent;
 }
 
-:host button {
-  font: inherit;
+/* block elements */
+:host hr {
+  height: 0;
   color: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
+  border-top-width: 1px;
 }
 
+:host h1,
+:host h2,
+:host h3,
+:host h4,
+:host h5,
+:host h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* links */
 :host a {
   color: inherit;
-  text-decoration: none;
+  text-decoration: inherit;
 }
 
+/* lists */
 :host ul,
 :host ol {
   list-style: none;
+}
+
+/* media */
+:host img,
+:host svg,
+:host video,
+:host canvas,
+:host audio,
+:host iframe,
+:host embed,
+:host object {
+  display: block;
+  vertical-align: middle;
+}
+
+:host img,
+:host video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* forms */
+:host button,
+:host input,
+:host optgroup,
+:host select,
+:host textarea {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  line-height: inherit;
+}
+
+:host button,
+:host [role="button"] {
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+:host button:disabled,
+:host [disabled] {
+  cursor: default;
+}
+
+:host input::placeholder,
+:host textarea::placeholder {
+  opacity: 1;
+  color: var(--zinc-500);
+}
+
+/* tables */
+:host table {
+  text-indent: 0;
+  border-color: inherit;
+  border-collapse: collapse;
 }
 
 /* scrollbar styling */

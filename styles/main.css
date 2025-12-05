@@ -1,5 +1,6 @@
 /* main stylesheet
-   imports tailwind and design tokens */
+   tailwind utilities + design tokens
+   preflight disabled - using custom reset.css */
 
 @import 'tailwindcss';
 @import './variables.css';

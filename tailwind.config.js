@@ -1,9 +1,14 @@
 // tailwind configuration
-// zinc/void monochromatic palette
+// zinc/void monochromatic palette - shadow dom scoped
 
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./src/**/*.{html,js,ts,svelte}'],
+  corePlugins: {
+    // disable preflight - prevents global reset from leaking to host page
+    // custom reset.css handles shadow dom resets
+    preflight: false
+  },
   theme: {
     extend: {
       colors: {
