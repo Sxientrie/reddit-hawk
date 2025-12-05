@@ -1,29 +1,44 @@
 // content script entry
 // shadow dom mounter with adoptedStyleSheets
 
-// import { mount } from 'svelte'; // phase iii
+import { mount } from 'svelte';
 import { createFontStyleSheet, verifyFontsLoaded } from '@lib/fonts';
 import { configStore } from '@lib/storage.svelte';
 import { mountDebugGlobals, debugLog } from '@utils/debug';
+import Overlay from '@ui/components/Overlay.svelte';
 
 // import css as inline strings for adoptedStyleSheets
 import mainCSS from '../../styles/main.css?inline';
 
 const HOST_ID = 'sxentrie-host';
+let hostElement: HTMLDivElement | null = null;
+let isVisible = false;
+let isInitialized = false;
+
+console.log('[sxentrie] content script loaded');
+
+/**
+ * listen for toggle message from background
+ * MUST be registered immediately, before any async work
+ */
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  console.log('[sxentrie] received message:', message.type);
+  if (message.type === 'TOGGLE_OVERLAY') {
+    toggleOverlay();
+    sendResponse({ success: true });
+  }
+  return true;
+});
 
 /**
  * collects and reparents svelte-injected styles to shadow root
- * fallback for any styles that escape to document.head
  */
 function reparentSvelteStyles(shadow: ShadowRoot): void {
-  // find any svelte-injected styles in document.head
   const svelteStyles = document.head.querySelectorAll('style[data-svelte]');
   
   svelteStyles.forEach(style => {
-    // clone and add to shadow
     const clone = style.cloneNode(true) as HTMLStyleElement;
     shadow.appendChild(clone);
-    // remove from document.head
     style.remove();
   });
 }
@@ -38,80 +53,109 @@ function createStyleSheet(css: string): CSSStyleSheet {
 }
 
 /**
+ * toggles overlay visibility
+ */
+function toggleOverlay(): void {
+  console.log('[sxentrie] toggle called, initialized:', isInitialized, 'visible:', isVisible);
+  
+  // lazy init if not done yet
+  if (!isInitialized) {
+    initOverlay();
+  }
+  
+  if (!hostElement) {
+    console.log('[sxentrie] no host element');
+    return;
+  }
+  
+  isVisible = !isVisible;
+  hostElement.style.display = isVisible ? 'block' : 'none';
+  console.log('[sxentrie] overlay now', isVisible ? 'visible' : 'hidden');
+}
+
+/**
  * creates shadow root and mounts svelte app
  */
-async function initOverlay(): Promise<void> {
+function initOverlay(): void {
   // prevent double injection
   if (document.getElementById(HOST_ID)) {
-    debugLog('host already exists');
+    console.log('[sxentrie] host already exists');
+    hostElement = document.getElementById(HOST_ID) as HTMLDivElement;
+    isInitialized = true;
     return;
   }
 
-  // mount debug globals (tree-shaken in production)
-  mountDebugGlobals({
-    configStore,
-    version: '0.1.0'
-  });
+  console.log('[sxentrie] initializing overlay...');
 
-  // create host element
-  const host = document.createElement('div');
-  host.id = HOST_ID;
-  host.style.cssText = `
-    position: fixed;
-    top: 0;
-    right: 0;
-    z-index: 2147483647;
-    pointer-events: none;
-  `;
+  try {
+    // mount debug globals (tree-shaken in production)
+    mountDebugGlobals({
+      configStore,
+      version: '0.1.0'
+    });
 
-  // attach shadow root
-  const shadow = host.attachShadow({ mode: 'open' });
+    // create host element (hidden by default)
+    const host = document.createElement('div');
+    host.id = HOST_ID;
+    host.style.cssText = `
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 2147483647;
+      pointer-events: none;
+      display: none;
+    `;
+    hostElement = host;
 
-  // create stylesheets
-  const fontSheet = createFontStyleSheet();
-  const mainSheet = createStyleSheet(mainCSS);
+    // attach shadow root
+    const shadow = host.attachShadow({ mode: 'open' });
 
-  // adopt stylesheets (fonts first for priority)
-  shadow.adoptedStyleSheets = [fontSheet, mainSheet];
+    // create stylesheets
+    const fontSheet = createFontStyleSheet();
+    const mainSheet = createStyleSheet(mainCSS);
 
-  // create mount target
-  const appRoot = document.createElement('div');
-  appRoot.id = 'app';
-  appRoot.style.pointerEvents = 'auto';
-  shadow.appendChild(appRoot);
+    // adopt stylesheets (fonts first for priority)
+    shadow.adoptedStyleSheets = [fontSheet, mainSheet];
 
-  // append host to body
-  document.body.appendChild(host);
+    // create mount target
+    const appRoot = document.createElement('div');
+    appRoot.id = 'app';
+    appRoot.style.pointerEvents = 'auto';
+    shadow.appendChild(appRoot);
 
-  // event trapping - prevent host page interference
-  host.addEventListener('keydown', e => e.stopPropagation(), true);
-  host.addEventListener('wheel', e => e.stopPropagation(), true);
-  host.addEventListener('mousedown', e => e.stopPropagation(), true);
+    // append host to body
+    document.body.appendChild(host);
 
-  debugLog('shadow dom mounted');
+    // event trapping - prevent host page interference
+    host.addEventListener('keydown', e => e.stopPropagation(), true);
+    host.addEventListener('wheel', e => e.stopPropagation(), true);
+    host.addEventListener('mousedown', e => e.stopPropagation(), true);
 
-  // verify fonts loaded (async, non-blocking)
-  verifyFontsLoaded().catch(() => {
-    debugLog('font verification failed - possible CSP block');
-  });
+    console.log('[sxentrie] shadow dom mounted');
 
-  // reparent any svelte styles that escaped to document.head
-  reparentSvelteStyles(shadow);
+    // verify fonts loaded (async, non-blocking)
+    verifyFontsLoaded().catch(() => {
+      console.log('[sxentrie] font verification failed');
+    });
 
-  // observe for future svelte style injections
-  const observer = new MutationObserver(() => {
+    // reparent any svelte styles
     reparentSvelteStyles(shadow);
-  });
-  observer.observe(document.head, { childList: true });
 
-  // TODO: mount svelte component in phase iii
-  // const app = mount(HudContainer, { target: appRoot });
-  // reparentSvelteStyles(shadow); // reparent after mount
+    // observe for future svelte style injections
+    const observer = new MutationObserver(() => {
+      reparentSvelteStyles(shadow);
+    });
+    observer.observe(document.head, { childList: true });
+
+    // mount svelte overlay component
+    mount(Overlay, { target: appRoot });
+    reparentSvelteStyles(shadow);
+    
+    isInitialized = true;
+    console.log('[sxentrie] initialization complete');
+  } catch (err) {
+    console.error('[sxentrie] initialization error:', err);
+  }
 }
 
-// init on load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => initOverlay());
-} else {
-  initOverlay();
-}
+console.log('[sxentrie] content script ready, waiting for messages');

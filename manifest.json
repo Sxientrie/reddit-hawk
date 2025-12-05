@@ -14,10 +14,12 @@
     "offscreen",
     "scripting",
     "activeTab",
+    "tabs",
     "notifications",
     "identity"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://oauth.reddit.com/*",
     "https://www.reddit.com/r/*/new.json"
   ],
@@ -33,7 +35,6 @@
     }
   ],
   "action": {
-    "default_popup": "src/popup/index.html",
     "default_title": "Sxentrie"
   },
   "web_accessible_resources": [

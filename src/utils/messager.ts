@@ -26,6 +26,7 @@ export interface MessagePayloadMap {
   PLAY_SOUND: { soundId: string };
   KEEP_ALIVE: { timestamp: number };
   LOG_ENTRY: LogEntry;
+  TOGGLE_OVERLAY: undefined;
 }
 
 /**
@@ -40,6 +41,7 @@ export interface MessageResponseMap {
   PLAY_SOUND: void;
   KEEP_ALIVE: void;
   LOG_ENTRY: void;
+  TOGGLE_OVERLAY: void;
 }
 
 /**

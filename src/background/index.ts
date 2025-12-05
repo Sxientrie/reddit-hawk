@@ -45,6 +45,48 @@ function registerHandlers(): void {
   onMessage('KEEP_ALIVE', () => {
     // reset idle timer
   });
+
+  // icon click -> inject content script and toggle overlay
+  chrome.action.onClicked.addListener(async (tab) => {
+    console.log('[sxentrie] icon clicked, tab:', tab.id, tab.url);
+    if (!tab.id || !tab.url) {
+      console.log('[sxentrie] no tab id or url');
+      return;
+    }
+    
+    // skip chrome:// and edge:// pages
+    if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
+      console.log('[sxentrie] cannot inject into browser pages');
+      return;
+    }
+
+    try {
+      // try to send message first (content script may already be loaded)
+      await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' });
+      console.log('[sxentrie] message sent to existing content script');
+    } catch {
+      // content script not loaded, inject it
+      console.log('[sxentrie] injecting content script...');
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['assets/content.js']
+        });
+        console.log('[sxentrie] content script injected, sending toggle...');
+        // wait a bit for script to initialize
+        setTimeout(async () => {
+          try {
+            await chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_OVERLAY' });
+            console.log('[sxentrie] toggle sent after injection');
+          } catch (e) {
+            console.log('[sxentrie] failed to send toggle after injection:', e);
+          }
+        }, 100);
+      } catch (e) {
+        console.log('[sxentrie] failed to inject:', e);
+      }
+    }
+  });
 }
 
 /**

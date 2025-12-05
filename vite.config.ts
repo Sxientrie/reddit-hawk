@@ -1,7 +1,7 @@
 // vite configuration
 // multi-entry build for chrome extension (mv3)
 
-import { defineConfig } from 'vite';
+import { defineConfig, build } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -10,12 +10,63 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// custom plugin to build content script as IIFE separately
+function contentScriptPlugin() {
+  return {
+    name: 'content-script-iife',
+    async writeBundle() {
+      // build content script as IIFE after main build
+      await build({
+        configFile: false,
+        build: {
+          outDir: 'dist',
+          emptyOutDir: false,
+          lib: {
+            entry: resolve(__dirname, 'src/content/index.ts'),
+            name: 'sxentrie',
+            formats: ['iife'],
+            fileName: () => 'assets/content.js'
+          },
+          rollupOptions: {
+            output: {
+              extend: true,
+              assetFileNames: 'assets/[name].[ext]'
+            }
+          },
+          minify: 'esbuild',
+          sourcemap: false
+        },
+        plugins: [
+          tailwindcss(),
+          svelte({
+            compilerOptions: {
+              runes: true,
+              css: 'external'
+            }
+          })
+        ],
+        resolve: {
+          alias: {
+            '@': resolve(__dirname, 'src'),
+            '@lib': resolve(__dirname, 'src/lib'),
+            '@ui': resolve(__dirname, 'src/ui'),
+            '@services': resolve(__dirname, 'src/services'),
+            '@utils': resolve(__dirname, 'src/utils')
+          }
+        },
+        define: {
+          'import.meta.env.IS_DEBUG': JSON.stringify(false)
+        }
+      });
+    }
+  };
+}
+
 export default defineConfig(({ mode, command }) => {
   const isProduction = command === 'build' && mode === 'production';
 
   return {
     define: {
-      // strict false for production builds - enables dead code elimination
       'import.meta.env.IS_DEBUG': JSON.stringify(!isProduction && mode === 'development')
     },
     plugins: [
@@ -29,9 +80,10 @@ export default defineConfig(({ mode, command }) => {
       viteStaticCopy({
         targets: [
           { src: 'manifest.json', dest: '.' },
-          { src: 'assets/*', dest: 'assets' }
+          { src: 'assets/**/*', dest: 'assets' }
         ]
-      })
+      }),
+      contentScriptPlugin()
     ],
     resolve: {
       alias: {
@@ -43,8 +95,6 @@ export default defineConfig(({ mode, command }) => {
       }
     },
     server: {
-      // disable hmr entirely - csp violations in content scripts
-      // use `npm run build -- --watch` for live reload instead
       hmr: false,
       watch: {
         usePolling: false
@@ -53,13 +103,11 @@ export default defineConfig(({ mode, command }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      // no sourcemaps in production - prevents unsafe-eval csp violations
       sourcemap: isProduction ? false : 'hidden',
       minify: isProduction ? 'esbuild' : false,
       rollupOptions: {
         input: {
           background: resolve(__dirname, 'src/background/index.ts'),
-          content: resolve(__dirname, 'src/content/index.ts'),
           popup: resolve(__dirname, 'src/popup/index.html'),
           offscreen: resolve(__dirname, 'src/offscreen/offscreen.html')
         },
