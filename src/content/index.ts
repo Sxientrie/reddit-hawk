@@ -6,10 +6,36 @@ import { createFontStyleSheet, verifyFontsLoaded } from '@lib/fonts';
 import { configStore } from '@lib/storage.svelte';
 import { mountDebugGlobals, debugLog } from '@utils/debug';
 
-// import css as inline string for adoptedStyleSheets
+// import css as inline strings for adoptedStyleSheets
 import mainCSS from '../../styles/main.css?inline';
 
 const HOST_ID = 'sxentrie-host';
+
+/**
+ * collects and reparents svelte-injected styles to shadow root
+ * fallback for any styles that escape to document.head
+ */
+function reparentSvelteStyles(shadow: ShadowRoot): void {
+  // find any svelte-injected styles in document.head
+  const svelteStyles = document.head.querySelectorAll('style[data-svelte]');
+  
+  svelteStyles.forEach(style => {
+    // clone and add to shadow
+    const clone = style.cloneNode(true) as HTMLStyleElement;
+    shadow.appendChild(clone);
+    // remove from document.head
+    style.remove();
+  });
+}
+
+/**
+ * creates constructable stylesheet from css text
+ */
+function createStyleSheet(css: string): CSSStyleSheet {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(css);
+  return sheet;
+}
 
 /**
  * creates shadow root and mounts svelte app
@@ -42,11 +68,8 @@ async function initOverlay(): Promise<void> {
   const shadow = host.attachShadow({ mode: 'open' });
 
   // create stylesheets
-  const mainSheet = new CSSStyleSheet();
-  mainSheet.replaceSync(mainCSS);
-
-  // font stylesheet with chrome.runtime.getURL paths
   const fontSheet = createFontStyleSheet();
+  const mainSheet = createStyleSheet(mainCSS);
 
   // adopt stylesheets (fonts first for priority)
   shadow.adoptedStyleSheets = [fontSheet, mainSheet];
@@ -72,8 +95,18 @@ async function initOverlay(): Promise<void> {
     debugLog('font verification failed - possible CSP block');
   });
 
+  // reparent any svelte styles that escaped to document.head
+  reparentSvelteStyles(shadow);
+
+  // observe for future svelte style injections
+  const observer = new MutationObserver(() => {
+    reparentSvelteStyles(shadow);
+  });
+  observer.observe(document.head, { childList: true });
+
   // TODO: mount svelte component in phase iii
-  // mount(HudContainer, { target: appRoot });
+  // const app = mount(HudContainer, { target: appRoot });
+  // reparentSvelteStyles(shadow); // reparent after mount
 }
 
 // init on load

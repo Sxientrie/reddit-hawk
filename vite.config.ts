@@ -23,7 +23,7 @@ export default defineConfig(({ mode, command }) => {
       svelte({
         compilerOptions: {
           runes: true,
-          css: 'injected'
+          css: 'external'
         }
       }),
       viteStaticCopy({

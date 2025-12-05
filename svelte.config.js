@@ -1,5 +1,5 @@
 // svelte compiler configuration
-// runes mode + injected css for shadow dom compatibility
+// runes mode + external css for shadow dom manual injection
 
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
@@ -7,6 +7,8 @@ export default {
   preprocess: vitePreprocess(),
   compilerOptions: {
     runes: true,
-    css: 'injected'
+    // external css - emitted as separate file for shadow dom injection
+    // 'injected' would insert into document.head (breaks shadow dom isolation)
+    css: 'external'
   }
 };
