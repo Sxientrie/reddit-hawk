@@ -3,6 +3,8 @@
 
 // import { mount } from 'svelte'; // phase iii
 import { createFontStyleSheet, verifyFontsLoaded } from '@lib/fonts';
+import { configStore } from '@lib/storage.svelte';
+import { mountDebugGlobals, debugLog } from '@utils/debug';
 
 // import css as inline string for adoptedStyleSheets
 import mainCSS from '../../styles/main.css?inline';
@@ -15,9 +17,15 @@ const HOST_ID = 'sxentrie-host';
 async function initOverlay(): Promise<void> {
   // prevent double injection
   if (document.getElementById(HOST_ID)) {
-    console.log('[sxentrie] host already exists');
+    debugLog('host already exists');
     return;
   }
+
+  // mount debug globals (tree-shaken in production)
+  mountDebugGlobals({
+    configStore,
+    version: '0.1.0'
+  });
 
   // create host element
   const host = document.createElement('div');
@@ -57,11 +65,11 @@ async function initOverlay(): Promise<void> {
   host.addEventListener('wheel', e => e.stopPropagation(), true);
   host.addEventListener('mousedown', e => e.stopPropagation(), true);
 
-  console.log('[sxentrie] shadow dom mounted');
+  debugLog('shadow dom mounted');
 
   // verify fonts loaded (async, non-blocking)
   verifyFontsLoaded().catch(() => {
-    console.warn('[sxentrie] font verification failed - possible CSP block');
+    debugLog('font verification failed - possible CSP block');
   });
 
   // TODO: mount svelte component in phase iii
