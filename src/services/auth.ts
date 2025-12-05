@@ -21,6 +21,20 @@ let memoryToken: string | null = null;
 let memoryExpiry: number = 0;
 
 /**
+ * exposes l1 cache state for debugging
+ * returns getter object - values are live references
+ */
+export function getAuthDebugState() {
+  if (!IS_DEBUG) return null;
+  return {
+    get token() { return memoryToken ? `${memoryToken.slice(0, 8)}...` : null; },
+    get expiry() { return memoryExpiry; },
+    get expiresIn() { return memoryExpiry ? Math.round((memoryExpiry - Date.now()) / 1000) + 's' : 'n/a'; },
+    get isValid() { return memoryToken !== null && Date.now() < memoryExpiry; }
+  };
+}
+
+/**
  * generates mock token for development
  */
 function getMockToken(): string {

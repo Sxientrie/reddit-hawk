@@ -1,8 +1,9 @@
 // background service worker entry
 // handles chrome.alarms, polling, and message routing
 
-import { hydrateAuth } from '@services/auth';
+import { hydrateAuth, getAuthDebugState } from '@services/auth';
 import { onMessage, type LogEntry } from '@utils/messager';
+import { mountDebugGlobals } from '@utils/debug';
 import { IS_DEBUG } from '@utils/constants';
 
 /**
@@ -101,6 +102,12 @@ async function init(): Promise<void> {
 
   // hydrate auth state from storage (sw may have been idle)
   await hydrateAuth();
+
+  // remote logging handler (debug mode only to save bandwidth)
+  mountDebugGlobals({
+    get authState() { return getAuthDebugState(); },
+    version: '0.1.0'
+  });
 
   console.log('[sxentrie] service worker ready');
 }

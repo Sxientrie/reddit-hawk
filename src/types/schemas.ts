@@ -2,7 +2,26 @@
 // type-safe definitions for reddit api responses and config
 // resilient parsing - graceful fallbacks for malformed data
 
-import { z } from 'zod';
+import { IS_DEBUG } from '@utils/constants';
+
+/**
+ * helper for resilient parsing with debug logging
+ * catches validation errors, logs them (in debug), and returns fallback
+ */
+function resilient<T extends z.ZodTypeAny>(schema: T, fallback: z.infer<T> | T) {
+  return schema.catch((ctx) => {
+    if (IS_DEBUG) {
+      const issue = ctx.error.issues[0];
+      const path = issue?.path.join('.') || 'root';
+      const msg = issue?.message || 'validation failed';
+      console.warn(`[sxentrie] schema warning (${path}): ${msg}`, { 
+        input: ctx.input,
+        issues: ctx.error.issues 
+      });
+    }
+    return fallback;
+  });
+}
 
 /**
  * coerces string timestamps to numbers
@@ -16,31 +35,31 @@ const coerceNumber = z.union([
 /**
  * reddit post schema
  * maps to /r/subreddit/new.json response structure
- * uses .catch() for volatile fields - reliability > strictness
+ * uses resilient() for volatile fields - reliability > strictness
  */
 export const HitSchema = z.object({
   // required fields - fail if missing
   id: z.string(),
-  title: z.string().catch('[untitled]'),
+  title: resilient(z.string(), '[untitled]'),
   subreddit: z.string(),
   permalink: z.string(),
 
   // volatile fields - graceful fallbacks
-  author: z.string().catch('[deleted]'),
-  url: z.string().optional().catch(undefined),
-  selftext: z.string().optional().catch(undefined),
-  created_utc: coerceNumber.catch(Date.now() / 1000),
-  score: z.number().catch(0),
-  num_comments: z.number().catch(0),
-  link_flair_text: z.string().nullable().catch(null),
-  is_self: z.boolean().catch(true),
-  over_18: z.boolean().catch(false),
+  author: resilient(z.string(), '[deleted]'),
+  url: resilient(z.string().optional(), undefined),
+  selftext: resilient(z.string().optional(), undefined),
+  created_utc: resilient(coerceNumber, Date.now() / 1000),
+  score: resilient(z.number(), 0),
+  num_comments: resilient(z.number(), 0),
+  link_flair_text: resilient(z.string().nullable(), null),
+  is_self: resilient(z.boolean(), true),
+  over_18: resilient(z.boolean(), false),
 
   // additional fields reddit may include
-  thumbnail: z.string().optional().catch(undefined),
-  domain: z.string().optional().catch(undefined),
-  distinguished: z.string().nullable().optional().catch(null),
-  stickied: z.boolean().optional().catch(false)
+  thumbnail: resilient(z.string().optional(), undefined),
+  domain: resilient(z.string().optional(), undefined),
+  distinguished: resilient(z.string().nullable().optional(), null),
+  stickied: resilient(z.boolean().optional(), false)
 });
 
 export type Hit = z.infer<typeof HitSchema>;
@@ -54,7 +73,10 @@ export function parseHit(data: unknown): Hit | null {
   if (result.success) {
     return result.data;
   }
-  console.warn('[sxentrie] failed to parse hit:', result.error.issues);
+  // log critical failure even in production, but especially in debug
+  if (IS_DEBUG) {
+    console.warn('[sxentrie] parsing critical failure:', result.error.issues);
+  }
   return null;
 }
 
@@ -73,22 +95,22 @@ export function parseHits(data: unknown[]): Hit[] {
  * all fields have safe defaults
  */
 export const ConfigSchema = z.object({
-  subreddits: z.array(z.string()).catch([]),
-  keywords: z.array(z.string()).catch([]),
-  poisonKeywords: z.array(z.string()).catch([]),
-  pollingInterval: z.number().min(10).max(300).catch(30),
-  audioEnabled: z.boolean().catch(true),
-  quietHours: z.object({
-    enabled: z.boolean().catch(false),
-    start: z.string().catch('22:00'),
-    end: z.string().catch('08:00')
-  }).catch({
+  subreddits: resilient(z.array(z.string()), []),
+  keywords: resilient(z.array(z.string()), []),
+  poisonKeywords: resilient(z.array(z.string()), []),
+  pollingInterval: resilient(z.number().min(10).max(300), 30),
+  audioEnabled: resilient(z.boolean(), true),
+  quietHours: resilient(z.object({
+    enabled: resilient(z.boolean(), false),
+    start: resilient(z.string(), '22:00'),
+    end: resilient(z.string(), '08:00')
+  }), {
     enabled: false,
     start: '22:00',
     end: '08:00'
   }),
-  webhookUrl: z.string().url().optional().catch(undefined),
-  clientId: z.string().optional().catch(undefined)
+  webhookUrl: resilient(z.string().url().optional(), undefined),
+  clientId: resilient(z.string().optional(), undefined)
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

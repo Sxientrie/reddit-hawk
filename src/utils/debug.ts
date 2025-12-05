@@ -9,33 +9,48 @@ import { IS_DEBUG } from '@utils/constants';
 export interface DebugState {
   configStore?: unknown;
   authState?: unknown;
+  version?: string;
   [key: string]: unknown;
 }
 
 /**
- * augment window for typescript
+ * augment global scope for typescript
+ * works for both window (content) and self (service worker)
  */
 declare global {
   interface Window {
     __SXENTRIE__?: DebugState;
   }
+  // service worker global scope
+  // eslint-disable-next-line no-var
+  var __SXENTRIE__: DebugState | undefined;
 }
 
 /**
- * mounts debug globals to window
+ * gets appropriate global object (window or self)
+ */
+function getGlobalThis(): typeof globalThis {
+  if (typeof self !== 'undefined') return self;
+  if (typeof window !== 'undefined') return window;
+  return globalThis;
+}
+
+/**
+ * mounts debug globals to window/self
  * strictly gated by IS_DEBUG - tree-shaken in production
  */
 export function mountDebugGlobals(state: DebugState): void {
   if (!IS_DEBUG) return;
 
-  window.__SXENTRIE__ = state;
+  const global = getGlobalThis() as typeof globalThis & { __SXENTRIE__?: DebugState };
+  global.__SXENTRIE__ = state;
 
   console.log(
     '%c[sxentrie] debug mode enabled',
     'color: #71717a; font-weight: bold;'
   );
   console.log(
-    '%cAccess internal state via: window.__SXENTRIE__',
+    '%cAccess internal state via: __SXENTRIE__',
     'color: #71717a;'
   );
 }
