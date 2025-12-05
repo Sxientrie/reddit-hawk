@@ -9,7 +9,10 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: {
+    'import.meta.env.IS_DEBUG': JSON.stringify(mode === 'development')
+  },
   plugins: [
     svelte({
       compilerOptions: {
@@ -33,6 +36,13 @@ export default defineConfig({
       '@utils': resolve(__dirname, 'src/utils')
     }
   },
+  server: {
+    // disable hmr for content scripts (csp violations)
+    hmr: {
+      protocol: 'ws',
+      host: 'localhost'
+    }
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -51,5 +61,4 @@ export default defineConfig({
       }
     }
   }
-});
-
+}));

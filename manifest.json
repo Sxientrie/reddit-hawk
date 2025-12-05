@@ -14,7 +14,8 @@
     "offscreen",
     "scripting",
     "activeTab",
-    "notifications"
+    "notifications",
+    "identity"
   ],
   "host_permissions": [
     "https://oauth.reddit.com/*",
