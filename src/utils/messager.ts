@@ -17,6 +17,19 @@ export interface MessagePayloadMap {
 }
 
 /**
+ * message response map
+ * maps message types to their expected return values
+ */
+export interface MessageResponseMap {
+  START_SCAN: void;
+  STOP_SCAN: void;
+  UPDATE_CONFIG: void;
+  NEW_HIT: void;
+  PLAY_SOUND: void;
+  KEEP_ALIVE: void;
+}
+
+/**
  * typed message structure
  */
 export type TypedMessage<T extends MessageType = MessageType> = {
@@ -26,12 +39,12 @@ export type TypedMessage<T extends MessageType = MessageType> = {
 
 /**
  * sends typed message to runtime
- * enforces payload type based on message type
+ * enforces payload and return type based on message type
  */
 export async function sendMessage<T extends MessageType>(
   type: T,
   payload?: MessagePayloadMap[T]
-): Promise<unknown> {
+): Promise<MessageResponseMap[T]> {
   const message: RuntimeMessage = { type, payload };
   return chrome.runtime.sendMessage(message);
 }
@@ -43,7 +56,7 @@ export async function sendTabMessage<T extends MessageType>(
   tabId: number,
   type: T,
   payload?: MessagePayloadMap[T]
-): Promise<unknown> {
+): Promise<MessageResponseMap[T]> {
   const message: RuntimeMessage = { type, payload };
   return chrome.tabs.sendMessage(tabId, message);
 }
@@ -54,7 +67,7 @@ export async function sendTabMessage<T extends MessageType>(
 export type MessageHandler<T extends MessageType> = (
   payload: MessagePayloadMap[T],
   sender: chrome.runtime.MessageSender
-) => void | Promise<unknown>;
+) => MessageResponseMap[T] | Promise<MessageResponseMap[T]>;
 
 /**
  * registers typed message listener
@@ -67,7 +80,7 @@ export function onMessage<T extends MessageType>(
   const listener = (
     message: RuntimeMessage,
     sender: chrome.runtime.MessageSender,
-    sendResponse: (response?: unknown) => void
+    sendResponse: (response?: MessageResponseMap[T]) => void
   ) => {
     if (message.type !== type) return false;
 
