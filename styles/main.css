@@ -1,0 +1,6 @@
+/* main stylesheet
+   imports tailwind and design tokens */
+
+@import 'tailwindcss';
+@import './variables.css';
+@import './reset.css';

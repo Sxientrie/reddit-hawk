@@ -1,0 +1,32 @@
+{
+  "name": "sxentrie",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "bits-ui": "next",
+    "dompurify": "^3.2.2",
+    "idb-keyval": "^6.2.1",
+    "ky": "^1.7.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/chrome": "^0.0.287",
+    "@types/dompurify": "^3.2.0",
+    "@types/node": "^24.10.1",
+    "svelte": "^5.14.1",
+    "svelte-check": "^4.1.1",
+    "tailwindcss": "^4.0.0-beta.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vite-plugin-static-copy": "^3.1.4"
+  }
+}
