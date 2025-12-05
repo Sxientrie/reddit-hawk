@@ -36,10 +36,27 @@ export class ChromeStorageProxy<T> {
     this.#initialized = true;
   }
 
+  /**
+   * shallow equality check via json stringify
+   * sufficient for serializable config objects
+   */
+  #isEqual(a: T, b: T): boolean {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return a === b;
+    }
+  }
+
   #listen() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[this.#key]) {
-        this.#value = changes[this.#key].newValue;
+        const newValue = changes[this.#key].newValue as T;
+
+        // skip update if value is identical (prevents redundant reactive cycles)
+        if (!this.#isEqual(this.#value, newValue)) {
+          this.#value = newValue;
+        }
       }
     });
   }
