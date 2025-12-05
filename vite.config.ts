@@ -41,7 +41,7 @@ function contentScriptPlugin() {
           svelte({
             compilerOptions: {
               runes: true,
-              css: 'external'
+              css: 'injected'
             }
           })
         ],

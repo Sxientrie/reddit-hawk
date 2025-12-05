@@ -2,6 +2,7 @@
 // type-safe definitions for reddit api responses and config
 // resilient parsing - graceful fallbacks for malformed data
 
+import { z } from 'zod';
 import { IS_DEBUG } from '@utils/constants';
 
 /**

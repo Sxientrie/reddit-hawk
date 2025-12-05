@@ -93,7 +93,7 @@ export class ChromeStorageProxy<T> {
 
 // singleton instances with safe defaults
 export const configStore = new ChromeStorageProxy<Config>('config', {
-  subreddits: [],
+  subreddits: ['webdev', 'freelance'],
   keywords: [],
   poisonKeywords: [],
   pollingInterval: 30,

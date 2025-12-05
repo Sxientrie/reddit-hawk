@@ -101,9 +101,11 @@ function initOverlay(): void {
       position: fixed;
       top: 12px;
       right: 12px;
+      left: auto;
       z-index: 2147483647;
       pointer-events: none;
       display: none;
+      max-width: calc(100vw - 24px);
     `;
     hostElement = host;
 

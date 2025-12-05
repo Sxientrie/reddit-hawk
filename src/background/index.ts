@@ -1,7 +1,9 @@
 // background service worker entry
 // handles chrome.alarms, polling, and message routing
 
-import { hydrateAuth, getAuthDebugState } from '@services/auth';
+import { hydrateAuth, getAuthDebugState, isAuthenticated } from '@services/auth';
+import { getApiDebugState } from '@services/reddit-api';
+import { startPolling, stopPolling, getPollerDebugState } from './poller';
 import { onMessage, type LogEntry } from '@utils/messager';
 import { mountDebugGlobals } from '@utils/debug';
 import { IS_DEBUG } from '@utils/constants';
@@ -41,6 +43,21 @@ function registerHandlers(): void {
       formatRemoteLog(payload, sender);
     });
   }
+
+  // scan control handlers
+  onMessage('START_SCAN', () => {
+    startPolling();
+  });
+
+  onMessage('STOP_SCAN', () => {
+    stopPolling();
+  });
+
+  onMessage('UPDATE_CONFIG', async (config) => {
+    // configStore updates automatically via messaging elsewhere or direct storage set
+    // but if we receive this, we might want to manually refresh if needed
+    // for now, poller picks up changes on next loop
+  });
 
   // placeholder handlers for phase ii
   onMessage('KEEP_ALIVE', () => {
@@ -106,8 +123,18 @@ async function init(): Promise<void> {
   // remote logging handler (debug mode only to save bandwidth)
   mountDebugGlobals({
     get authState() { return getAuthDebugState(); },
+    get apiState() { return getApiDebugState(); },
+    get pollerState() { return getPollerDebugState(); },
     version: '0.1.0'
   });
+
+  const authed = await isAuthenticated();
+  if (authed) {
+    console.log('[sxentrie] user authenticated, starting poller...');
+    startPolling();
+  } else {
+    console.log('[sxentrie] waiting for authentication');
+  }
 
   console.log('[sxentrie] service worker ready');
 }

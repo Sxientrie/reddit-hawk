@@ -1,184 +1,252 @@
-# Sxentrie (RedditHawk) - Overview
+# Sxentrie (RedditHawk)
 
-## 1. Project Title & Value Proposition
+## 1. Project Overview
 
-**Sxentrie** (codenamed RedditHawk) is a high-performance "First Responder" Chrome Extension designed for freelancers and agencies. It monitors Reddit in real-time for new posts matching specific criteria, enabling users to be the first to reply to potential opportunities.
+**Sxentrie** is a high-performance "First Responder" Chrome Extension for freelancers and agencies. It monitors Reddit in real-time for new posts matching specific criteria, enabling users to be the first to reply to opportunities.
 
-Unlike standard RSS readers, Sxentrie is built for **speed and precision**, featuring sub-minute polling, intelligent deduplication, and a "Head-Up Display" (HUD) overlay that allows users to monitor opportunities without leaving their current workflow.
+Built for **speed and precision**: sub-minute polling, intelligent deduplication, and a floating HUD overlay that works on any webpage.
 
-## 2. Technology Stack
+---
 
-The project is built on the **Chrome Manifest V3** architecture, utilizing modern web standards without heavy frameworks.
+## 2. API Strategy: Session Piggybacking
 
-- **Core:** Svelte 5 (Runes) via Vite, JavaScript (ES Modules), HTML5.
-- **UI Protocol:** `bits-ui` (v1.0-next+), Tailwind CSS (Zinc/Void).
-- **Styling:** Scoped CSS (Svelte), Zinc Palette Variables.
-- **Extension APIs:**
-  - `chrome.alarms` (Scheduling)
-  - `chrome.storage` (State Persistence)
-  - `chrome.offscreen` (Audio Playback)
-  - `chrome.scripting` & `chrome.activeTab` (Overlay Injection)
-  - `chrome.notifications` (System Alerts)
-  - `Shadow DOM` (Style Isolation)
+### The Problem
 
-## 3. Core Features
+As of late 2025, Reddit has severely restricted API access:
 
-### Intelligent Scanning
+- **No Self-Service API Keys:** Applications for new API credentials are routinely rejected, even for research and non-profit use.
+- **BYOK Not Viable:** The "Bring Your Own Key" model described in older documentation is no longer practical—most users cannot obtain a Client ID.
+- **Rate Limits:** Official API requires OAuth tokens and caps usage at 100 QPM per Client ID.
 
-- **Multi-Subreddit Polling:** Uses "Pool Rotation" to cycle through batches of 20 subreddits, minimizing API load.
-- **Global Circuit Breaker:** Pauses ALL polling on 429s for the duration of the reset window. Only isolates (Binary Search) on 403/404s.
-- **Rate Limit Compliance:** Dynamically adjusts polling intervals based on Reddit's `x-ratelimit-remaining` headers.
+### The Solution: "Rogue Mode"
 
-### Keyword Logic
+Sxentrie uses **Session Piggybacking** instead of formal API authentication:
 
-- **Include/Exclude:** Supports mandatory keywords (e.g., "hiring", "budget") and "poison" keywords (e.g., "homework", "academic") to filter noise.
-- **Regex Tester:** Built-in tool to verify keyword matching logic against sample text.
-
-### Deduplication & State
-
-- **Content Hashing:** Uses `SHA-256` or `SimHash` (O(1)) on `Title + Author` for highly efficient deduplication.
-- **Hybrid Memory State:** Uses a Synchronous L1 Cache (Set) for O(1) lookups, backed by async `idb-keyval` (L2) for persistence.
-
-### Security & Privacy
-
-- **BYOK (Bring Your Own Key):** Operates on a "User-Owned Credentials" model. Users provide their own Reddit Client ID, ensuring data sovereignty and avoiding shared API quotas.
-- **Dynamic User-Agent:** Constructs RFC-compliant headers (`chrome-extension:<id>:<version>`) based on authenticated user identity to prevent shadowbans.
-
-### "First Responder" Tools
-
-- **Floating Overlay:** A persistent, draggable Svelte app injected via Shadow DOM, strictly guarded against host page event leakage.
-- **Smart Copy:** One-click copying with secure sanitization and dynamic templates (`{{AUTHOR}}`, `{{TITLE}}`).
-- **Audio Alerts:** "Offscreen Ping-Pong" mechanism ensures the audio process stays alive during active scanning, bypassing browser throttling.
-
-## 4. Architecture
-
-The system follows a **Split-Brain Architecture** to comply with Manifest V3's ephemeral nature:
-
-1.  **The Brain (Service Worker):**
-
-    - Handles all business logic: fetching (via `ky`), parsing (via `zod`), and state management.
-    - Runs on a **Recursive Chain** (Self-Healing).
-    - **Hybrid State:** Universal Reactivity via `ChromeStorageProxy` (Svelte 5 Runes).
-    - Single Source of Truth: All state mutations flow through shared reactive stores.
-
-2.  **The Face:**
-
-    - Responsible solely for rendering the UI (Svelte App).
-    - Injects a Shadow DOM root (`#reddithawk-host`) and mounts the Svelte instance.
-    - Communicates with the Brain via `chrome.runtime.sendMessage`.
-
-3.  **The Voice (Offscreen - `offscreen.html`):**
-    - A hidden document managed by a Keep-Alive lifecycle to play audio.
-
-## 5. User Stories
-
-- **The Video Editor:** "I want to monitor `r/editors` and `r/videography` for posts containing 'hiring' but exclude posts containing 'free' or 'exposure', so I only apply to paid gigs."
-- **The Developer:** "I want to be notified immediately when a post matches my criteria, even if I'm browsing another site, so I can paste my 'Portfolio' template and send a DM within seconds."
-- **The Agency:** "I want to export my configuration of 50+ niche subreddits and keywords to share with my team."
-
-## 6. Use Cases
-
-1.  **Freelance Lead Generation:** Monitoring `r/forhire`, `r/freelance_forhire`, and niche subs for job postings.
-2.  **Market Research:** Tracking mentions of a brand or product across Reddit.
-3.  **Arbitrage:** Spotting underpriced items on `r/hardwareswap` or `r/mechmarket`.
-
-## 7. Folder Structure
-
-```text
-reddit-hawk/
-├── assets/
-│   ├── icons/              # .png items
-│   └── audio/              # .mp3 alert sounds
-│
-├── src/
-│   ├── background/         # "The Brain" (Service Worker)
-│   │   ├── index.js        # Entry point (imports managers below)
-│   │   ├── alarm-manager.js# Handles chrome.alarms schedule
-│   │   ├── poller.js       # Orchestrates the fetching loop
-│   │   └── messager.js     # Routes messages from Content Script
-│   │
-│   ├── content/            # "The Face" (UI Injection)
-│   │   ├── index.js        # Entry point
-│   │   ├── injector.js     # Shadow DOM creation & CSS injection
-│   │   └── bridge.js       # Handles message passing to Background
-│   │
-│   ├── offscreen/          # "The Voice"
-│   │   ├── audio-player.js # Logic to play sounds
-│   │   └── offscreen.html  # Host file
-│   │
-│   ├── services/           # Pure Logic (No UI, No Chrome API if possible)
-│   │   ├── reddit-api.js   # Raw HTTP fetching & Error handling
-│   │   ├── parser.js       # JSON cleaning & deduplication logic
-│   │   ├── matcher.js      # Keyword regex & poison filtering
-│   │   └── storage.js      # Wrapper for chrome.storage (Session/Local)
-│   │
-│   ├── ui/                 # Visual Logic (Svelte Components)
-│   │   ├── components/     # .svelte files
-│   │   │   ├── HudContainer.svelte  # Main Island container
-│   │   │   ├── FeedList.svelte      # Hit list
-│   │   │   ├── HitCard.svelte       # Individual post
-│   │   │   └── Controls.svelte      # Toolbar
-│   │   └── templates/      # Helpers
-│   │       └── smart-copy.js
-│   │
-│   └── utils/              # Shared Helpers
-│       ├── constants.js    # Global Config (Limits, defaults)
-│       ├── formatting.js   # Date formatting, text truncation
-│       ├── hashing.js      # SHA-256 / SimHash logic
-│       ├── mock-api.js     # DevEx: Mock Reddit API
-│       └── logger.js       # Console wrapper
-│
-├── styles/                 # CSS (Zinc Palette)
-│   ├── main.css            # Imports all others
-│   ├── variables.css       # CSS Variables (Colors, Spacing)
-│   ├── reset.css           # Shadow DOM resets
-│   ├── overlay.css         # HUD positioning/animations
-│   └── cards.css           # Styling for individual hits
-│
-├── manifest.json
-└── README.md
+```
+┌─────────────────────────────────────────────────────────────┐
+│  USER'S BROWSER                                             │
+│  ┌─────────────┐     ┌─────────────────┐                    │
+│  │ Reddit Tab  │     │ Sxentrie Ext.   │                    │
+│  │ (Logged In) │────▶│ Service Worker  │                    │
+│  └─────────────┘     └────────┬────────┘                    │
+│        │                      │                             │
+│   Cookies shared              │ fetch() with                │
+│   via browser                 │ credentials: 'include'      │
+│        │                      ▼                             │
+│        └──────────────▶ reddit.com/r/.../new.json           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 8. Naming Conventions
+**How it works:**
 
-To maintain order, strict naming conventions are required.
+1. User logs into Reddit normally in their browser
+2. Extension fetches public `.json` endpoints (`www.reddit.com/r/subreddit/new.json`)
+3. Browser automatically attaches Reddit session cookies (no API key needed)
+4. Extension receives authenticated-user treatment from Reddit's perspective
 
-#### 1. Files & Directories
+**Benefits:**
+- ✅ No API key required
+- ✅ No OAuth flow to implement
+- ✅ Uses existing browser session
+- ✅ Rate limits are per-session, not per-app
 
-- **Format:** `kebab-case`
-- **Reason:** Ensures cross-OS compatibility (Windows/Linux/Mac handle case sensitivity differently).
-- **Examples:** `alarm-manager.js`, `hit-card.js`, `reddit-api.js`.
+**Limitations:**
+- ⚠️ User must be logged into Reddit in the browser
+- ⚠️ If Reddit changes cookie policies, this may break
+- ⚠️ Not suitable for server-side or headless deployments
 
-#### 2. Variables & Functions
+---
 
-- **Format:** `camelCase`
-- **Reason:** Standard JavaScript convention.
-- **Examples:** `fetchSubreddits`, `isPoisonKeyword`, `currentRateLimit`.
+## 3. Technology Stack
 
-#### 3. Classes
+Built on **Chrome Manifest V3** architecture:
 
-- **Format:** `PascalCase`
-- **Reason:** Distinguishes instantiable objects from standard functions.
-- **Examples:** `RedditPoller`, `HitCard`, `StorageService`.
+| Layer | Technology |
+|-------|------------|
+| **UI Framework** | Svelte 5 (Runes) |
+| **Build Tool** | Vite |
+| **HTTP Client** | ky |
+| **Validation** | Zod |
+| **Styling** | Scoped CSS (Zinc/Void palette) |
+| **State** | chrome.storage.local + reactive proxies |
 
-#### 4. Constants (Global)
+**Extension APIs Used:**
+- `chrome.alarms` – Scheduling
+- `chrome.storage` – State persistence
+- `chrome.scripting` – Programmatic content script injection
+- `chrome.tabs` – Cross-tab messaging
+- `Shadow DOM` – Style isolation from host pages
 
-- **Format:** `UPPER_SNAKE_CASE`
-- **Location:** Usually in `src/utils/constants.js`.
-- **Examples:** `MAX_POLLING_INTERVAL`, `REDDIT_BASE_URL`, `MSG_TYPE_NEW_HIT`.
+---
 
-#### 5. Private Methods (Convention)
+## 4. Core Features
 
-- **Format:** `_camelCase` (underscore prefix)
-- **Reason:** Signals to other developers "Do not call this function from outside this file/class."
-- **Example:** `_parseResponse()`, `_updateInternalState()`.
+### Real-Time Monitoring
+- Polls configured subreddits every 30 seconds
+- Uses multi-subreddit batching (`r/sub1+sub2+sub3/new.json`) for efficiency
+- Passive rate limit inspection via response headers
 
-## 9. Setup & Installation
+### Intelligent Deduplication
+- L1 Cache: In-memory `Set<string>` for O(1) lookups
+- L2 Cache: Persisted hits in `chrome.storage.local`
+- Prevents duplicate alerts even across browser restarts
 
-2.  Run `npm install` to grab Svelte/Vite dependencies.
-3.  Run `npm run dev` (or `build`).
-4.  Open Chrome and navigate to `chrome://extensions/`.
-5.  Enable **Developer mode**.
-6.  Click **Load unpacked**.
-7.  Select the `dist/` folder (or relevant build output).
-8.  Click the extension icon in the toolbar to toggle the overlay.
+### Floating Overlay (HUD)
+- Injected via Shadow DOM (style-isolated)
+- Toggle with extension icon click
+- Persists state across tabs
+- Glassmorphism "Zinc & Void" design
+
+### Hit Cards
+- Subreddit + Author + Timestamp
+- Click to open post in new tab
+- Dismiss button to remove from feed
+
+---
+
+## 5. Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SXENTRIE ARCHITECTURE                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────┐    broadcasts    ┌─────────────────┐   │
+│  │   THE BRAIN     │ ──────────────▶  │   THE FACE      │   │
+│  │ (Service Worker)│                  │ (Content Script) │   │
+│  │                 │                  │                  │   │
+│  │ • Poller        │                  │ • Shadow DOM     │   │
+│  │ • Reddit API    │                  │ • Svelte Overlay │   │
+│  │ • Deduplication │                  │ • Hit display    │   │
+│  │ • Rate limiting │                  │ • User actions   │   │
+│  └────────┬────────┘                  └──────────────────┘   │
+│           │                                                  │
+│           │ persists                                         │
+│           ▼                                                  │
+│  ┌─────────────────┐                                         │
+│  │ chrome.storage  │                                         │
+│  │ • Config        │                                         │
+│  │ • Cached hits   │                                         │
+│  │ • Seen IDs      │                                         │
+│  └─────────────────┘                                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 6. Setup & Installation
+
+### Prerequisites
+- Node.js 18+
+- Chrome/Edge browser
+- Logged into Reddit in your browser
+
+### Steps
+
+```bash
+# 1. Clone and install
+git clone <repo>
+cd reddit-hawk
+npm install
+
+# 2. Build for development
+npm run build -- --mode development
+
+# 3. Load in Chrome
+#    - Navigate to chrome://extensions/
+#    - Enable "Developer mode"
+#    - Click "Load unpacked"
+#    - Select the `dist/` folder
+
+# 4. Usage
+#    - Click the Sxentrie icon to toggle the overlay
+#    - Posts from r/webdev and r/freelance appear automatically
+#    - Click a post to open it in a new tab
+```
+
+---
+
+## 7. Configuration
+
+Default monitored subreddits (defined in `src/lib/storage.svelte.ts`):
+
+```typescript
+subreddits: ['webdev', 'freelance']
+```
+
+To modify, edit the `configStore` default values and rebuild.
+
+*Settings UI coming in Phase IV.*
+
+---
+
+## 8. File Structure
+
+```
+src/
+├── background/          # Service Worker ("The Brain")
+│   ├── index.ts         # Entry point, message handlers
+│   └── poller.ts        # Fetch loop, deduplication
+│
+├── content/             # Content Script ("The Face")
+│   └── index.ts         # Shadow DOM creation, overlay mount
+│
+├── services/            # Pure logic (no Chrome APIs)
+│   ├── auth.ts          # Dummy guest mode service
+│   ├── reddit-api.ts    # HTTP client (ky + session cookies)
+│   └── parser.ts        # JSON → Hit transformation
+│
+├── ui/components/       # Svelte components
+│   ├── Overlay.svelte   # Root component
+│   ├── HudContainer.svelte
+│   ├── FeedList.svelte
+│   └── HitCard.svelte
+│
+├── lib/                 # Shared utilities
+│   ├── storage.svelte.ts  # ChromeStorageProxy
+│   └── fonts.ts         # Font loading
+│
+├── types/               # TypeScript definitions
+│   └── schemas.ts       # Zod schemas for Hit, Config
+│
+└── utils/               # Helpers
+    ├── constants.ts     # Global config
+    ├── messager.ts      # Type-safe messaging
+    └── debug.ts         # Debug utilities
+```
+
+---
+
+## 9. Development
+
+```bash
+# Type check
+npm run check
+
+# Lint
+npm run lint
+
+# Format
+npm run format
+
+# Build (production)
+npm run build
+```
+
+---
+
+## 10. Known Limitations
+
+1. **Requires Reddit Login:** User must be logged into Reddit in the browser for session piggybacking to work.
+
+2. **Public Endpoints Only:** Cannot access private subreddits or user-specific feeds without formal OAuth.
+
+3. **Rate Limits:** ~10 QPM for unauthenticated, but session cookies may grant higher limits. Built-in circuit breaker prevents hitting limits.
+
+4. **No Settings UI Yet:** Subreddit/keyword configuration requires code changes (Phase IV pending).
+
+---
+
+## 11. License
+
+MIT
