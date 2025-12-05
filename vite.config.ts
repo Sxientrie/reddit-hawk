@@ -3,6 +3,7 @@
 
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,6 +15,7 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.IS_DEBUG': JSON.stringify(mode === 'development')
   },
   plugins: [
+    tailwindcss(),
     svelte({
       compilerOptions: {
         runes: true,
