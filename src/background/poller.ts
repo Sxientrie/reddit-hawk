@@ -87,6 +87,9 @@ export async function poll(): Promise<void> {
     return;
   }
 
+  // ensure config is hydrated (important after SW restart from alarm)
+  await configStore.ready;
+
   const config = configStore.value;
   const subs = config.subreddits;
   const interval = Math.max(config.pollingInterval, MIN_POLLING_INTERVAL);

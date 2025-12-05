@@ -41,6 +41,8 @@ function contentScriptPlugin() {
           svelte({
             compilerOptions: {
               runes: true,
+              // MUST be 'injected' for Shadow DOM - styles are embedded in component JS
+              // 'external' would emit to document.head which Shadow DOM cannot see
               css: 'injected'
             }
           })

@@ -68,6 +68,10 @@ export class ChromeStorageProxy<T> {
 
   /** current value - always defined (uses default until hydrated) */
   get value(): T {
+    // warn in debug mode if accessed before hydration
+    if (!this.#initialized && import.meta.env.IS_DEBUG) {
+      console.warn(`[storage] ${this.#key} accessed before hydration complete - using defaults`);
+    }
     return this.#value;
   }
 
