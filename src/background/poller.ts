@@ -3,7 +3,7 @@
 
 import { configStore } from '@lib/storage.svelte';
 import { fetchSubredditBatch, RateLimitError } from '@services/reddit-api';
-import { debugLog, debugWarn, debugError } from '@utils/debug';
+import { log } from '@utils/logger';
 import { DEFAULT_POLLING_INTERVAL, MIN_POLLING_INTERVAL } from '@utils/constants';
 
 let isRunning = false;
@@ -36,17 +36,17 @@ async function poll() {
   const interval = Math.max(config.pollingInterval, MIN_POLLING_INTERVAL);
 
   if (!subs || subs.length === 0) {
-    debugLog('poller: no subreddits configured, sleeping...');
+    log.poller.info('no subreddits configured, sleeping...');
     pollingTimer = setTimeout(poll, 60000); // check again in 1m
     return;
   }
 
   try {
-    debugLog(`poller: fetching from ${subs.length} subs...`);
+    log.poller.info(`fetching from ${subs.length} subs...`);
     const hits = await fetchSubredditBatch(subs);
     consecutiveErrors = 0; // success resets backoff
 
-    debugLog(`poller: received ${hits.length} total hits, seenIds: ${seenIds.size}`);
+    log.poller.info(`received ${hits.length} total hits, seenIds: ${seenIds.size}`);
 
     // collect unseen hits
     const newHits = hits.filter(hit => !seenIds.has(hit.id));
@@ -68,7 +68,7 @@ async function poll() {
         }
       }
       
-      debugLog(`poller: broadcasted ${newHits.length} new hits to ${tabs.length} tabs`);
+      log.poller.info(`broadcasted ${newHits.length} new hits to ${tabs.length} tabs`);
     }
 
     // schedule next normal poll
@@ -76,17 +76,17 @@ async function poll() {
 
   } catch (err) {
     if (err instanceof RateLimitError) {
-      debugWarn(`poller: rate limited, sleeping for ${err.resetTime}s`);
+      log.poller.warn(`rate limited, sleeping for ${err.resetTime}s`);
       pollingTimer = setTimeout(poll, (err.resetTime + 1) * 1000);
       return;
     }
 
     consecutiveErrors++;
-    debugError('poller: fetch failed', err);
+    log.poller.error('fetch failed', err);
     
     // schedule retry with backoff
     const delay = getNextDelay(interval);
-    debugLog(`poller: retrying in ${delay / 1000}s`);
+    log.poller.info(`retrying in ${delay / 1000}s`);
     pollingTimer = setTimeout(poll, delay);
   }
 }
@@ -97,7 +97,7 @@ async function poll() {
 export function startPolling() {
   if (isRunning) return;
   
-  debugLog('poller: starting engine');
+  log.poller.info('starting engine');
   isRunning = true;
   consecutiveErrors = 0;
   
@@ -111,7 +111,7 @@ export function startPolling() {
  * stops the polling engine
  */
 export function stopPolling() {
-  debugLog('poller: stopping engine');
+  log.poller.info('stopping engine');
   isRunning = false;
   if (pollingTimer) {
     clearTimeout(pollingTimer);

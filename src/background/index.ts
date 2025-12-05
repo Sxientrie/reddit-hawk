@@ -7,6 +7,7 @@ import { startPolling, stopPolling, getPollerDebugState } from './poller';
 import { onMessage, type LogEntry } from '@utils/messager';
 import { mountDebugGlobals } from '@utils/debug';
 import { IS_DEBUG } from '@utils/constants';
+import { log } from '@utils/logger';
 
 /**
  * formats log entry for console output
@@ -66,42 +67,42 @@ function registerHandlers(): void {
 
   // icon click -> inject content script and toggle overlay
   chrome.action.onClicked.addListener(async (tab) => {
-    console.log('[sxentrie] icon clicked, tab:', tab.id, tab.url);
+    log.bg.info('icon clicked, tab:', tab.id, tab.url);
     if (!tab.id || !tab.url) {
-      console.log('[sxentrie] no tab id or url');
+      log.bg.debug('no tab id or url');
       return;
     }
     
     // skip chrome:// and edge:// pages
     if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
-      console.log('[sxentrie] cannot inject into browser pages');
+      log.bg.debug('cannot inject into browser pages');
       return;
     }
 
     try {
       // try to send message first (content script may already be loaded)
       await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' });
-      console.log('[sxentrie] message sent to existing content script');
+      log.bg.info('message sent to existing content script');
     } catch {
       // content script not loaded, inject it
-      console.log('[sxentrie] injecting content script...');
+      log.bg.info('injecting content script...');
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           files: ['assets/content.js']
         });
-        console.log('[sxentrie] content script injected, sending toggle...');
+        log.bg.info('content script injected, sending toggle...');
         // wait a bit for script to initialize
         setTimeout(async () => {
           try {
             await chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_OVERLAY' });
-            console.log('[sxentrie] toggle sent after injection');
+            log.bg.info('toggle sent after injection');
           } catch (e) {
-            console.log('[sxentrie] failed to send toggle after injection:', e);
+            log.bg.error('failed to send toggle after injection:', e);
           }
         }, 100);
       } catch (e) {
-        console.log('[sxentrie] failed to inject:', e);
+        log.bg.error('failed to inject:', e);
       }
     }
   });
@@ -112,7 +113,7 @@ function registerHandlers(): void {
  * hydrates state from storage before processing
  */
 async function init(): Promise<void> {
-  console.log('[sxentrie] service worker initializing...');
+  log.bg.info('service worker initializing...');
 
   // register message handlers first
   registerHandlers();
@@ -130,13 +131,13 @@ async function init(): Promise<void> {
 
   const authed = await isAuthenticated();
   if (authed) {
-    console.log('[sxentrie] user authenticated, starting poller...');
+    log.bg.info('user authenticated, starting poller...');
     startPolling();
   } else {
-    console.log('[sxentrie] waiting for authentication');
+    log.bg.info('waiting for authentication');
   }
 
-  console.log('[sxentrie] service worker ready');
+  log.bg.info('service worker ready');
 }
 
 // run initialization

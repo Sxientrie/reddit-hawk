@@ -5,7 +5,7 @@
 import ky from 'ky';
 import { parseRedditResponse } from '@services/parser';
 import { RATE_LIMIT_THRESHOLD, REDDIT_BASE_URL } from '@utils/constants';
-import { debugLog, debugWarn } from '@utils/debug';
+import { log } from '@utils/logger';
 
 // internal state for passive header inspection
 let rateLimitRemaining = 100; // stricter default for public
@@ -37,7 +37,7 @@ function updateRateLimits(headers: Headers) {
   if (reset) rateLimitReset = parseFloat(reset);
   if (used) rateLimitUsed = parseFloat(used);
 
-  debugLog(`api: limits updated - rem:${rateLimitRemaining} reset:${rateLimitReset}s`);
+  log.api.info(`limits updated - rem:${rateLimitRemaining} reset:${rateLimitReset}s`);
 }
 
 /**
