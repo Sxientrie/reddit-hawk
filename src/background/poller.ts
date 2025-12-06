@@ -27,6 +27,7 @@ const DEFAULT_CONFIG: Config = {
 // runtime state (non-persisted)
 let isRunning = false;
 let consecutiveErrors = 0;
+let isBusy = false; // concurrency lock - prevents overlapping poll executions
 
 /**
  * loads config from chrome.storage.local
@@ -111,74 +112,88 @@ export async function poll(): Promise<void> {
     return;
   }
 
-  // load config from storage
-  const config = await loadConfig();
-  const subs = config.subreddits;
-  const interval = Math.max(config.pollingInterval, MIN_POLLING_INTERVAL);
-
-  if (!subs || subs.length === 0) {
-    log.poller.info('no subreddits configured, sleeping...');
-    await scheduleNextPoll(1); // check again in 1 minute
+  // check-and-set: prevent concurrent executions
+  if (isBusy) {
+    log.poller.debug('skipping poll: busy');
     return;
   }
 
-  // load persisted seen IDs
-  const seenIds = await loadSeenIds();
-  log.poller.debug(`loaded ${seenIds.size} seen IDs from storage`);
+  // acquire lock
+  isBusy = true;
 
   try {
-    log.poller.info(`fetching from ${subs.length} subs...`);
-    const hits = await fetchSubredditBatch(subs);
-    consecutiveErrors = 0; // success resets backoff
+    // load config from storage
+    const config = await loadConfig();
+    const subs = config.subreddits;
+    const interval = Math.max(config.pollingInterval, MIN_POLLING_INTERVAL);
 
-    log.poller.info(`received ${hits.length} total hits, seenIds: ${seenIds.size}`);
-
-    // collect unseen hits
-    const unseenHits = hits.filter(hit => !seenIds.has(hit.id));
-    
-    // apply keyword filters (include/exclude)
-    const matchedHits = filterHits(unseenHits, config);
-    
-    // mark ALL unseen as seen (even filtered ones, to avoid re-checking)
-    for (const hit of unseenHits) {
-      seenIds.add(hit.id);
-    }
-
-    // persist updated seen IDs
-    await saveSeenIds(seenIds);
-
-    // broadcast matched hits to side panel
-    if (matchedHits.length > 0) {
-      // send to side panel via runtime messaging
-      for (const hit of matchedHits) {
-        chrome.runtime.sendMessage({ type: 'NEW_HIT', payload: hit }).catch(() => {});
-      }
-      
-      log.poller.info(`broadcasted ${matchedHits.length} matched hits`);
-      
-      // play notification sound if enabled
-      if (config.audioEnabled) {
-        playNotificationSound('notification');
-      }
-    }
-
-    // schedule next normal poll
-    await scheduleNextPoll(interval / 60);
-
-  } catch (err) {
-    if (err instanceof RateLimitError) {
-      log.poller.warn(`rate limited, sleeping for ${err.resetTime}s`);
-      await scheduleNextPoll(err.resetTime / 60);
+    if (!subs || subs.length === 0) {
+      log.poller.info('no subreddits configured, sleeping...');
+      await scheduleNextPoll(1); // check again in 1 minute
       return;
     }
 
-    consecutiveErrors++;
-    log.poller.error('fetch failed', err);
-    
-    // schedule retry with backoff
-    const delayMinutes = getBackoffMinutes(interval);
-    log.poller.info(`retrying in ${(delayMinutes * 60).toFixed(0)}s`);
-    await scheduleNextPoll(delayMinutes);
+    // load persisted seen IDs
+    const seenIds = await loadSeenIds();
+    log.poller.debug(`loaded ${seenIds.size} seen IDs from storage`);
+
+    try {
+      log.poller.info(`fetching from ${subs.length} subs...`);
+      const hits = await fetchSubredditBatch(subs);
+      consecutiveErrors = 0; // success resets backoff
+
+      log.poller.info(`received ${hits.length} total hits, seenIds: ${seenIds.size}`);
+
+      // collect unseen hits
+      const unseenHits = hits.filter(hit => !seenIds.has(hit.id));
+      
+      // apply keyword filters (include/exclude)
+      const matchedHits = filterHits(unseenHits, config);
+      
+      // mark ALL unseen as seen (even filtered ones, to avoid re-checking)
+      for (const hit of unseenHits) {
+        seenIds.add(hit.id);
+      }
+
+      // persist updated seen IDs
+      await saveSeenIds(seenIds);
+
+      // broadcast matched hits to side panel
+      if (matchedHits.length > 0) {
+        // send to side panel via runtime messaging
+        for (const hit of matchedHits) {
+          chrome.runtime.sendMessage({ type: 'NEW_HIT', payload: hit }).catch(() => {});
+        }
+        
+        log.poller.info(`broadcasted ${matchedHits.length} matched hits`);
+        
+        // play notification sound if enabled
+        if (config.audioEnabled) {
+          playNotificationSound('notification');
+        }
+      }
+
+      // schedule next normal poll
+      await scheduleNextPoll(interval / 60);
+
+    } catch (err) {
+      if (err instanceof RateLimitError) {
+        log.poller.warn(`rate limited, sleeping for ${err.resetTime}s`);
+        await scheduleNextPoll(err.resetTime / 60);
+        return;
+      }
+
+      consecutiveErrors++;
+      log.poller.error('fetch failed', err);
+      
+      // schedule retry with backoff
+      const delayMinutes = getBackoffMinutes(interval);
+      log.poller.info(`retrying in ${(delayMinutes * 60).toFixed(0)}s`);
+      await scheduleNextPoll(delayMinutes);
+    }
+  } finally {
+    // release lock - guaranteed to run even if errors occur or sw terminates
+    isBusy = false;
   }
 }
 
@@ -227,6 +242,7 @@ export function handleAlarm(alarm: chrome.alarms.Alarm): void {
 export function getPollerDebugState() {
   return {
     get isRunning() { return isRunning; },
+    get isBusy() { return isBusy; },
     get errorCount() { return consecutiveErrors; },
     async getSeenCount() { 
       const ids = await loadSeenIds();
