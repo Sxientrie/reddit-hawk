@@ -58,16 +58,22 @@ function matchesAny(text: string, keywords: string[]): boolean {
 /**
  * checks if a hit passes the keyword filters
  * 
- * logic:
+ * strict 1+1=2 rule:
+ * - keywords are MANDATORY (no keywords = no hits, fail-safe to silence)
  * - if include keywords exist, hit MUST match at least one
  * - if poison keywords exist, hit MUST NOT match any
- * - if no keywords set, all hits pass
  */
 export function matchesFilters(hit: Hit, config: Config): boolean {
   const { keywords, poisonKeywords } = config;
   
   // combine title and selftext for matching
   const searchText = `${hit.title} ${hit.selftext || ''}`.toLowerCase();
+  
+  // MANDATORY: keywords must be configured (fail-safe to silence)
+  if (keywords.length === 0) {
+    log.poller.debug('hit filtered (no keywords configured - strict mode)');
+    return false;
+  }
   
   // check poison keywords first (exclusion)
   if (poisonKeywords.length > 0) {
@@ -77,12 +83,10 @@ export function matchesFilters(hit: Hit, config: Config): boolean {
     }
   }
   
-  // check include keywords (if any are set, at least one must match)
-  if (keywords.length > 0) {
-    if (!matchesAny(searchText, keywords)) {
-      log.poller.debug(`hit filtered (no match): "${hit.title.slice(0, 40)}..."`);
-      return false;
-    }
+  // keywords exist - at least one must match
+  if (!matchesAny(searchText, keywords)) {
+    log.poller.debug(`hit filtered (no match): "${hit.title.slice(0, 40)}..."`);
+    return false;
   }
   
   // passed all filters
@@ -92,14 +96,10 @@ export function matchesFilters(hit: Hit, config: Config): boolean {
 /**
  * filters an array of hits based on config
  * returns only hits that pass all filters
+ * keywords are mandatory - empty keywords = zero hits
  */
 export function filterHits(hits: Hit[], config: Config): Hit[] {
-  const hasFilters = config.keywords.length > 0 || config.poisonKeywords.length > 0;
-  
-  if (!hasFilters) {
-    return hits;
-  }
-  
+  // always filter - keywords are mandatory
   const filtered = hits.filter(hit => matchesFilters(hit, config));
   
   if (filtered.length !== hits.length) {
