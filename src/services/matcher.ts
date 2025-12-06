@@ -13,12 +13,25 @@ function escapeRegex(str: string): string {
 
 /**
  * creates a case-insensitive regex from keyword
- * supports word boundary matching for more accurate results
+ * uses word boundaries (\b) for precision, but only where applicable
+ * handles edge cases: "C++" (no boundaries), ".NET" (end boundary only), "React" (both boundaries)
  */
 function createKeywordRegex(keyword: string): RegExp {
-  const escaped = escapeRegex(keyword.trim());
-  // match whole words or as part of compound words
-  return new RegExp(escaped, 'i');
+  const trimmed = keyword.trim();
+  const escaped = escapeRegex(trimmed);
+  
+  // check if keyword starts/ends with word characters (a-z, 0-9, _)
+  // word boundaries (\b) only work with word characters
+  const startsWithWord = /^\w/.test(trimmed);
+  const endsWithWord = /\w$/.test(trimmed);
+  
+  // conditionally add word boundaries
+  const prefix = startsWithWord ? '\\b' : '';
+  const suffix = endsWithWord ? '\\b' : '';
+  
+  const pattern = `${prefix}${escaped}${suffix}`;
+  
+  return new RegExp(pattern, 'i');
 }
 
 /**
