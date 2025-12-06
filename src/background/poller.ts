@@ -12,7 +12,11 @@ import {
   ALARM_NAME,
   STORAGE_KEYS
 } from '@utils/constants';
-import type { Config } from '@/types/schemas';
+import type { Config, Hit } from '@/types/schemas';
+
+// storage configuration
+const HITS_CACHE_KEY = 'sxentrie_hits_cache';
+const MAX_CACHED_HITS = 100;
 
 // default config
 const DEFAULT_CONFIG: Config = {
@@ -100,6 +104,37 @@ async function saveLatestHitTimestamp(timestamp: number): Promise<void> {
     });
   } catch (err) {
     log.poller.warn('failed to save latestHitTimestamp:', err);
+  }
+}
+
+/**
+ * loads cached hits from chrome.storage.local
+ * used for appending new hits without losing history
+ */
+async function loadCachedHits(): Promise<Hit[]> {
+  try {
+    const result = await chrome.storage.local.get(HITS_CACHE_KEY);
+    const hits = result[HITS_CACHE_KEY];
+    if (Array.isArray(hits)) {
+      return hits;
+    }
+  } catch (err) {
+    log.poller.warn('failed to load cached hits:', err);
+  }
+  return [];
+}
+
+/**
+ * saves hits to chrome.storage.local
+ * service worker is source of truth for hit persistence
+ */
+async function saveCachedHits(hits: Hit[]): Promise<void> {
+  try {
+    const limited = hits.slice(0, MAX_CACHED_HITS);
+    await chrome.storage.local.set({ [HITS_CACHE_KEY]: limited });
+    log.poller.debug(`saved ${limited.length} hits to storage`);
+  } catch (err) {
+    log.poller.warn('failed to save cached hits:', err);
   }
 }
 
@@ -200,18 +235,26 @@ export async function poll(): Promise<void> {
       // persist updated seen IDs
       await saveSeenIds(seenIds);
 
-      // broadcast matched hits to side panel
+      // persist matched hits to storage (source of truth)
       if (matchedHits.length > 0) {
-        // send to side panel via runtime messaging
-        for (const hit of matchedHits) {
-          chrome.runtime.sendMessage({ type: 'NEW_HIT', payload: hit }).catch(() => {});
-        }
+        // load existing hits from storage
+        const existingHits = await loadCachedHits();
         
-        log.poller.info(`broadcasted ${matchedHits.length} matched hits`);
+        // prepend new hits (most recent first)
+        const updatedHits = [...matchedHits, ...existingHits].slice(0, MAX_CACHED_HITS);
+        
+        // save to storage - service worker is source of truth
+        await saveCachedHits(updatedHits);
+        
+        log.poller.info(`persisted ${matchedHits.length} matched hits to storage`);
         
         // update latest hit timestamp (newest hit we've ever seen)
         const newestTimestamp = Math.max(...matchedHits.map(h => h.created_utc));
         await saveLatestHitTimestamp(newestTimestamp);
+        
+        // broadcast minimal notification to UI (triggers refresh if open)
+        // payload is empty - UI reads from storage via onChanged listener
+        chrome.runtime.sendMessage({ type: 'NEW_HIT' }).catch(() => {});
         
         // play notification sound if enabled
         if (config.audioEnabled) {

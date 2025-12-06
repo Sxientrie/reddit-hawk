@@ -17,62 +17,50 @@ export function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('feed');
 
-  // persist hits to storage
-  const saveHits = useCallback(async (newHits: Hit[]) => {
-    try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: newHits.slice(0, MAX_CACHED_HITS) });
-    } catch {
-      // silent fail
-    }
-  }, []);
-
-  // dismiss a hit
+  // dismiss a hit (writes back to storage)
   const handleDismiss = useCallback((id: string) => {
     setHits((prev) => {
       const filtered = prev.filter((h) => h.id !== id);
-      saveHits(filtered);
+      
+      // write filtered list back to storage
+      chrome.storage.local.set({ [STORAGE_KEY]: filtered.slice(0, MAX_CACHED_HITS) })
+        .catch(() => {}); // silent fail
+      
       return filtered;
     });
-  }, [saveHits]);
+  }, []);
 
-  // add a new hit
-  const addHit = useCallback((hit: Hit) => {
-    setHits((prev) => {
-      if (prev.some((h) => h.id === hit.id)) return prev;
-      const updated = [hit, ...prev].slice(0, 50);
-      saveHits(updated);
-      return updated;
-    });
-  }, [saveHits]);
-
-  // hydrate from storage and setup message listener
+  // hydrate from storage and setup reactive listener
   useEffect(() => {
     log.ui.info('side panel mounted');
 
-    // hydrate from storage
+    // initial hydration from storage
     chrome.storage.local.get(STORAGE_KEY).then((result) => {
       if (result[STORAGE_KEY] && Array.isArray(result[STORAGE_KEY])) {
-        setHits(result[STORAGE_KEY].slice(0, 50));
+        setHits(result[STORAGE_KEY].slice(0, MAX_CACHED_HITS));
       }
       setIsLoading(false);
     }).catch(() => {
       setIsLoading(false);
     });
 
-    // listen for new hits from background
-    const listener = (
-      message: { type: string; payload?: unknown },
-      _sender: chrome.runtime.MessageSender,
-      _sendResponse: (response?: unknown) => void
+    // listen for storage changes from service worker
+    const storageListener = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      area: string
     ) => {
-      if (message.type === 'NEW_HIT' && message.payload) {
-        addHit(message.payload as Hit);
+      if (area === 'local' && changes[STORAGE_KEY]) {
+        const newHits = changes[STORAGE_KEY].newValue;
+        if (Array.isArray(newHits)) {
+          setHits(newHits.slice(0, MAX_CACHED_HITS));
+          log.ui.debug(`updated ${newHits.length} hits from storage`);
+        }
       }
     };
 
-    chrome.runtime.onMessage.addListener(listener);
-    return () => chrome.runtime.onMessage.removeListener(listener);
-  }, [addHit]);
+    chrome.storage.onChanged.addListener(storageListener);
+    return () => chrome.storage.onChanged.removeListener(storageListener);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-200 font-sans text-sm antialiased">
