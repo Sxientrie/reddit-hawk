@@ -77,6 +77,33 @@ async function saveSeenIds(ids: Set<string>): Promise<void> {
 }
 
 /**
+ * loads latest hit timestamp from chrome.storage.local
+ * used to filter zombie hits after browser restart (seenIds cleared)
+ */
+async function loadLatestHitTimestamp(): Promise<number> {
+  try {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.LATEST_HIT_TIMESTAMP);
+    return result[STORAGE_KEYS.LATEST_HIT_TIMESTAMP] ?? 0;
+  } catch {
+    return 0; // fresh install or error - allow all
+  }
+}
+
+/**
+ * saves latest hit timestamp to chrome.storage.local
+ * persists across browser restarts to prevent spam
+ */
+async function saveLatestHitTimestamp(timestamp: number): Promise<void> {
+  try {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.LATEST_HIT_TIMESTAMP]: timestamp
+    });
+  } catch (err) {
+    log.poller.warn('failed to save latestHitTimestamp:', err);
+  }
+}
+
+/**
  * calculates next delay with backoff (in minutes for alarms)
  */
 function getBackoffMinutes(baseInterval: number): number {
@@ -144,8 +171,23 @@ export async function poll(): Promise<void> {
 
       log.poller.info(`received ${hits.length} total hits, seenIds: ${seenIds.size}`);
 
+      // load latest hit timestamp (prevents zombie spam on restart)
+      const latestHitTimestamp = await loadLatestHitTimestamp();
+      if (latestHitTimestamp > 0) {
+        log.poller.debug(`filtering hits older than ${new Date(latestHitTimestamp * 1000).toISOString()}`);
+      }
+
+      // filter out zombie hits (older than newest ever seen)
+      const freshHits = latestHitTimestamp > 0
+        ? hits.filter(hit => hit.created_utc > latestHitTimestamp)
+        : hits;
+
+      if (freshHits.length < hits.length) {
+        log.poller.info(`filtered ${hits.length - freshHits.length} zombie hits (pre-restart)`);
+      }
+
       // collect unseen hits
-      const unseenHits = hits.filter(hit => !seenIds.has(hit.id));
+      const unseenHits = freshHits.filter(hit => !seenIds.has(hit.id));
       
       // apply keyword filters (include/exclude)
       const matchedHits = filterHits(unseenHits, config);
@@ -166,6 +208,10 @@ export async function poll(): Promise<void> {
         }
         
         log.poller.info(`broadcasted ${matchedHits.length} matched hits`);
+        
+        // update latest hit timestamp (newest hit we've ever seen)
+        const newestTimestamp = Math.max(...matchedHits.map(h => h.created_utc));
+        await saveLatestHitTimestamp(newestTimestamp);
         
         // play notification sound if enabled
         if (config.audioEnabled) {

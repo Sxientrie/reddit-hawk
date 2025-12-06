@@ -27,7 +27,8 @@ export const STORAGE_KEYS = {
   CONFIG: 'config',
   SEEN_SET: 'seenSet',
   LAST_HEARTBEAT: 'lastHeartbeat',
-  RATE_LIMITS: 'rateLimits'
+  RATE_LIMITS: 'rateLimits',
+  LATEST_HIT_TIMESTAMP: 'latestHitTimestamp'
 } as const;
 
 // alarm names
