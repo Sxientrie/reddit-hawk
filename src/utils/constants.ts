@@ -26,7 +26,8 @@ export const MSG_TYPE = {
 export const STORAGE_KEYS = {
   CONFIG: 'config',
   SEEN_SET: 'seenSet',
-  LAST_HEARTBEAT: 'lastHeartbeat'
+  LAST_HEARTBEAT: 'lastHeartbeat',
+  RATE_LIMITS: 'rateLimits'
 } as const;
 
 // alarm names

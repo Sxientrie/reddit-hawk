@@ -4,13 +4,21 @@
 
 import ky from 'ky';
 import { parseRedditResponse } from '@services/parser';
-import { RATE_LIMIT_THRESHOLD, REDDIT_BASE_URL } from '@utils/constants';
+import { RATE_LIMIT_THRESHOLD, REDDIT_BASE_URL, STORAGE_KEYS } from '@utils/constants';
 import { log } from '@utils/logger';
 
+// default rate limit values
+const DEFAULT_RATE_LIMITS = {
+  remaining: 100,
+  reset: 0,
+  used: 0
+};
+
 // internal state for passive header inspection
-let rateLimitRemaining = 100; // stricter default for public
-let rateLimitReset = 0;
-let rateLimitUsed = 0;
+// persisted to chrome.storage.session to survive sw termination
+let rateLimitRemaining = DEFAULT_RATE_LIMITS.remaining;
+let rateLimitReset = DEFAULT_RATE_LIMITS.reset;
+let rateLimitUsed = DEFAULT_RATE_LIMITS.used;
 
 /**
  * error thrown when rate limit is exhausted
@@ -25,10 +33,50 @@ export class RateLimitError extends Error {
 }
 
 /**
+ * loads rate limit state from chrome.storage.session
+ * restores ephemeral state after service worker wake-up
+ */
+async function loadRateLimits(): Promise<void> {
+  try {
+    const storage = chrome.storage.session ?? chrome.storage.local;
+    const result = await storage.get(STORAGE_KEYS.RATE_LIMITS);
+    const limits = result[STORAGE_KEYS.RATE_LIMITS];
+
+    if (limits) {
+      rateLimitRemaining = limits.remaining ?? DEFAULT_RATE_LIMITS.remaining;
+      rateLimitReset = limits.reset ?? DEFAULT_RATE_LIMITS.reset;
+      rateLimitUsed = limits.used ?? DEFAULT_RATE_LIMITS.used;
+      log.api.debug(`limits loaded from storage - rem:${rateLimitRemaining}`);
+    }
+  } catch (err) {
+    log.api.warn('failed to load rate limits, using defaults:', err);
+  }
+}
+
+/**
+ * saves rate limit state to chrome.storage.session
+ * persists ephemeral state across service worker termination
+ */
+async function saveRateLimits(): Promise<void> {
+  try {
+    const storage = chrome.storage.session ?? chrome.storage.local;
+    await storage.set({
+      [STORAGE_KEYS.RATE_LIMITS]: {
+        remaining: rateLimitRemaining,
+        reset: rateLimitReset,
+        used: rateLimitUsed
+      }
+    });
+  } catch (err) {
+    log.api.warn('failed to save rate limits:', err);
+  }
+}
+
+/**
  * updates internal rate limit state from headers
  * public endpoints may not always return these, so we trust them if present
  */
-function updateRateLimits(headers: Headers) {
+async function updateRateLimits(headers: Headers) {
   const remaining = headers.get('x-ratelimit-remaining');
   const reset = headers.get('x-ratelimit-reset');
   const used = headers.get('x-ratelimit-used');
@@ -38,6 +86,9 @@ function updateRateLimits(headers: Headers) {
   if (used) rateLimitUsed = parseFloat(used);
 
   log.api.info(`limits updated - rem:${rateLimitRemaining} reset:${rateLimitReset}s`);
+
+  // persist to storage immediately after update
+  await saveRateLimits();
 }
 
 /**
@@ -52,8 +103,8 @@ function getClient() {
     },
     hooks: {
       afterResponse: [
-        (_request, _options, response) => {
-          updateRateLimits(response.headers);
+        async (_request, _options, response) => {
+          await updateRateLimits(response.headers);
         }
       ]
     },
@@ -76,9 +127,12 @@ export async function fetchSubredditBatch(
   subreddits: string[], 
   limit = 100
 ) {
+  // restore rate limits from storage (survives sw termination)
+  await loadRateLimits();
+
   // safety check - passive inspection
   if (rateLimitRemaining < RATE_LIMIT_THRESHOLD) {
-    debugWarn('api: rate limit threshold reached pre-flight');
+    log.api.warn('api: rate limit threshold reached pre-flight');
     throw new RateLimitError(rateLimitReset);
   }
 
