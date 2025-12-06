@@ -2,8 +2,8 @@
 
 **Format:** Technical directives with completion status.
 **Objective:** Chrome Extension (MV3). Real-time Reddit monitor.
-**Design Standard:** Zinc/Void Monochromatic. Glassmorphism.
-**Code Standard:** **Svelte 5** (Runes) via Vite. TypeScript. Max 300 lines/file.
+**Design Standard:** Zinc/Void Monochromatic. Tailwind CSS.
+**Code Standard:** **React 19** + TypeScript via Vite. Max 300 lines/file.
 
 ---
 
@@ -26,7 +26,7 @@ Instead of OAuth, Sxentrie uses the user's existing Reddit browser session:
 ky.create({
   prefixUrl: 'https://www.reddit.com', // Public endpoint, not oauth.reddit.com
   credentials: 'include', // Attach browser cookies
-  headers: { 'User-Agent': 'web:sxentrie:v0.1.0' }
+  headers: { 'User-Agent': 'web:sxentrie:v0.2.0' }
 });
 ```
 
@@ -51,17 +51,16 @@ ky.create({
 
 **Goal:** Directory hierarchy, configuration files, build targets.
 
-| Task                                                | Status |
-| --------------------------------------------------- | ------ |
-| Vite multi-entry build (background, content, popup) | ✅     |
-| Svelte 5 with Runes                                 | ✅     |
-| TypeScript configuration                            | ✅     |
-| Path aliases (@/, @services/, etc.)                 | ✅     |
-| ESLint + Prettier                                   | ✅     |
-| Manifest V3 definition                              | ✅     |
-| Shadow DOM style injection (`css: 'injected'`)      | ✅     |
-| Content script IIFE build                           | ✅     |
-| Zinc/Void design tokens                             | ✅     |
+| Task | Status |
+| --- | --- |
+| Vite multi-entry build (background, sidepanel) | ✅ |
+| React 19 + TypeScript | ✅ |
+| Tailwind CSS v4 | ✅ |
+| Path aliases (@/, @services/, etc.) | ✅ |
+| ESLint + Prettier (React configs) | ✅ |
+| Manifest V3 definition | ✅ |
+| Chrome Side Panel API integration | ✅ |
+| Zinc/Void design tokens (Tailwind) | ✅ |
 
 ---
 
@@ -69,90 +68,94 @@ ky.create({
 
 **Goal:** Service Worker fetching and parsing Reddit JSON.
 
-| Task                                              | Status     |
-| ------------------------------------------------- | ---------- |
-| ~~BYOK OAuth flow~~                               | ❌ REMOVED |
-| Session Piggybacking (`credentials: 'include'`)   | ✅         |
-| `reddit-api.ts` with ky client                    | ✅         |
-| `parser.ts` with Zod validation                   | ✅         |
-| Rate limit header inspection                      | ✅         |
-| `poller.ts` fetch loop                            | ✅         |
-| Exponential backoff on errors                     | ✅         |
-| L1 deduplication (in-memory Set)                  | ✅         |
-| Multi-subreddit batching (`r/sub1+sub2/new.json`) | ✅         |
-| Broadcast to all tabs                             | ✅         |
-| Debug globals (`__SXENTRIE__`)                    | ✅         |
+| Task | Status |
+| --- | --- |
+| ~~BYOK OAuth flow~~ | ❌ REMOVED |
+| Session Piggybacking (`credentials: 'include'`) | ✅ |
+| `reddit-api.ts` with ky client | ✅ |
+| `parser.ts` with Zod validation | ✅ |
+| Rate limit header inspection | ✅ |
+| `poller.ts` with chrome.alarms | ✅ |
+| Exponential backoff on errors | ✅ |
+| L1 deduplication (Set in chrome.storage.session) | ✅ |
+| Multi-subreddit batching (`r/sub1+sub2/new.json`) | ✅ |
+| Broadcast to side panel | ✅ |
+| Debug globals (`__SXENTRIE__`) | ✅ |
 
 ---
 
-## Phase III: The Face (Overlay UI) ✅ COMPLETE
+## Phase III: The Face (Side Panel UI) ✅ COMPLETE
 
-**Goal:** Floating HUD injected via Shadow DOM.
+**Goal:** Native Chrome Side Panel for persistent UI.
 
-| Task                                        | Status |
-| ------------------------------------------- | ------ |
-| Shadow DOM host creation                    | ✅     |
-| Programmatic content script injection       | ✅     |
-| Toggle on icon click                        | ✅     |
-| `HudContainer.svelte` (glassmorphism shell) | ✅     |
-| `FeedList.svelte` (scrollable list)         | ✅     |
-| `HitCard.svelte` (post display)             | ✅     |
-| `Overlay.svelte` (root component)           | ✅     |
-| Hit persistence to storage                  | ✅     |
-| Hydration from storage on mount             | ✅     |
-| Dismiss functionality                       | ✅     |
-| Event trapping (keydown, wheel, mousedown)  | ✅     |
-| Custom scrollbar styling                    | ✅     |
+| Task | Status |
+| --- | --- |
+| ~~Shadow DOM overlay~~ | ❌ REMOVED |
+| Chrome Side Panel registration | ✅ |
+| `sidePanel.setPanelBehavior` on icon click | ✅ |
+| `App.tsx` (side panel root) | ✅ |
+| `FeedList.tsx` (scrollable list) | ✅ |
+| `HitCard.tsx` (post display) | ✅ |
+| `SettingsPanel.tsx` (configuration) | ✅ |
+| Hit persistence to storage | ✅ |
+| Hydration from storage on mount | ✅ |
+| Dismiss functionality | ✅ |
+| Tabbed navigation (Feed/Settings) | ✅ |
+| Custom scrollbar styling | ✅ |
 
----
+**Side Panel Benefits:**
 
-## Phase IV: The Nervous System (Wiring) 🔄 IN PROGRESS
-
-**Goal:** Connect Brain to Face, handle user input.
-
-| Task                                | Status  |
-| ----------------------------------- | ------- |
-| Message bus (background ↔ content)  | ✅      |
-| Type-safe messaging (`messager.ts`) | ✅      |
-| NEW_HIT broadcast to all tabs       | ✅      |
-| START_SCAN / STOP_SCAN handlers     | ✅      |
-| Settings panel UI                   | ⏳ TODO |
-| Subreddit configuration input       | ⏳ TODO |
-| Keyword configuration input         | ⏳ TODO |
-| Poison keyword filtering            | ⏳ TODO |
-| Drag-to-reposition overlay          | ⏳ TODO |
+- ✅ Persists across tab switches
+- ✅ No ghost overlays when extension reloads
+- ✅ Native Chrome UI integration
+- ✅ Clean lifecycle management
 
 ---
 
-## Phase V: Intelligence & Filtering ⏳ TODO
+## Phase IV: Configuration & Filtering ✅ COMPLETE
 
-**Goal:** Implement keyword matching and filtering.
+**Goal:** User-configurable subreddits and keyword filtering.
 
-| Task                                  | Status  |
-| ------------------------------------- | ------- |
-| `matcher.ts` - keyword regex          | ⏳ TODO |
-| Include keywords filter               | ⏳ TODO |
-| Exclude (poison) keywords filter      | ⏳ TODO |
-| Filter integration in poller          | ⏳ TODO |
-| L2 deduplication (idb-keyval)         | ⏳ TODO |
-| Content hashing (SHA-256)             | ⏳ TODO |
-| Simulation mode (mock data injection) | ⏳ TODO |
+| Task | Status |
+| --- | --- |
+| Settings panel UI | ✅ |
+| Subreddit configuration input | ✅ |
+| Keyword (include) configuration | ✅ |
+| Poison keyword (exclude) config | ✅ |
+| Polling interval configuration | ✅ |
+| Audio toggle | ✅ |
+| Save/Reset functionality | ✅ |
+| `matcher.ts` - keyword filtering | ✅ |
+| Empty default config (user must add) | ✅ |
+| Settings persistence (storage.local) | ✅ |
 
 ---
 
-## Phase VI: The Voice & Expansion ⏳ TODO
+## Phase V: The Voice (Audio Alerts) ✅ COMPLETE
 
-**Goal:** Audio alerts and smart copy.
+**Goal:** Audio notifications for new hits.
 
-| Task                                 | Status  |
-| ------------------------------------ | ------- |
-| Offscreen document creation          | ⏳ TODO |
-| Audio playback via offscreen         | ⏳ TODO |
-| Keep-alive ping-pong                 | ⏳ TODO |
-| Smart copy templates                 | ⏳ TODO |
-| Quiet hours scheduling               | ⏳ TODO |
+| Task | Status |
+| --- | --- |
+| Offscreen document creation | ✅ |
+| Audio playback via offscreen | ✅ |
+| Audio toggle in settings | ✅ |
+| Notification sound bundled | ✅ |
+
+---
+
+## Phase VI: Advanced Features ⏳ TODO
+
+**Goal:** Power user features.
+
+| Task | Status |
+| --- | --- |
+| Quiet hours scheduling | ⏳ TODO |
+| Smart copy templates | ⏳ TODO |
 | Context profiles (save/load configs) | ⏳ TODO |
-| Webhook integration                  | ⏳ TODO |
+| Webhook integration | ⏳ TODO |
+| L2 deduplication (idb-keyval) | ⏳ TODO |
+| Content hashing (SHA-256) | ⏳ TODO |
 
 ---
 
@@ -160,40 +163,44 @@ ky.create({
 
 **Goal:** Code audit and production build.
 
-| Task                          | Status  |
-| ----------------------------- | ------- |
-| Console.log removal           | ⏳ TODO |
-| Bundle size optimization      | ⏳ TODO |
-| Post-build eval() check       | ⏳ TODO |
-| Icon generation (16, 48, 128) | ⏳ TODO |
-| Audio file compression        | ⏳ TODO |
-| ZIP packaging                 | ⏳ TODO |
-| Chrome Web Store listing      | ⏳ TODO |
+| Task | Status |
+| --- | --- |
+| Console.log removal | ⏳ TODO |
+| Bundle size optimization | ⏳ TODO |
+| Post-build eval() check | ⏳ TODO |
+| Icon generation (16, 48, 128) | ✅ |
+| Audio file compression | ⏳ TODO |
+| ZIP packaging | ⏳ TODO |
+| Chrome Web Store listing | ⏳ TODO |
 
 ---
 
 ## Completed Milestones
 
-### v0.1.0 - Foundation (Current)
+### v0.2.0 - React Migration (Current)
+
+- ✅ Migrated from Svelte to React 19 + TypeScript
+- ✅ Added Tailwind CSS v4 for styling
+- ✅ Cleaned up all Svelte artifacts
+- ✅ Implemented `useChromeStorage` hooks
+- ✅ Verified Side Panel + Background sync
+
+### v0.1.1 - Side Panel Migration
+
+- ✅ Migrated from content script overlay to Chrome Side Panel
+- ✅ Eliminated ghost overlay issues
+- ✅ Settings UI fully functional
+- ✅ Empty defaults (user configures their own subreddits)
+- ✅ Audio notifications working
+- ✅ Persistent panel across tab switches
+
+### v0.1.0 - Foundation
 
 - ✅ Session Piggybacking authentication
 - ✅ Real-time polling of configured subreddits
-- ✅ Floating overlay with hit display
+- ✅ Floating overlay (deprecated)
 - ✅ Cross-tab state persistence
 - ✅ Deduplication (L1)
-- ✅ Glassmorphism "Zinc & Void" design
-
-### Next: v0.2.0 - Configuration
-
-- Settings UI for subreddit/keyword management
-- Keyword filtering
-- Poison keyword exclusion
-
-### Future: v0.3.0 - Alerts
-
-- Audio notifications
-- Smart copy templates
-- Quiet hours
 
 ---
 

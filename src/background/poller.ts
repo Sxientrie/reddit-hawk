@@ -2,8 +2,9 @@
 // alarm-based orchestration engine for fetching matches
 // survives service worker termination via chrome.alarms
 
-import { configStore } from '@lib/storage.svelte';
 import { fetchSubredditBatch, RateLimitError } from '@services/reddit-api';
+import { filterHits } from '@services/matcher';
+import { playNotificationSound } from './audio-manager';
 import { log } from '@utils/logger';
 import { 
   DEFAULT_POLLING_INTERVAL, 
@@ -11,10 +12,33 @@ import {
   ALARM_NAME,
   STORAGE_KEYS
 } from '@utils/constants';
+import type { Config } from '@/types/schemas';
+
+// default config
+const DEFAULT_CONFIG: Config = {
+  subreddits: [],
+  keywords: [],
+  poisonKeywords: [],
+  pollingInterval: 30,
+  audioEnabled: true,
+  quietHours: { enabled: false, start: '22:00', end: '08:00' }
+};
 
 // runtime state (non-persisted)
 let isRunning = false;
 let consecutiveErrors = 0;
+
+/**
+ * loads config from chrome.storage.local
+ */
+async function loadConfig(): Promise<Config> {
+  try {
+    const result = await chrome.storage.local.get('config');
+    return result.config ?? DEFAULT_CONFIG;
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
 
 /**
  * loads seen IDs from session storage (preferred) or local storage (fallback)
@@ -87,10 +111,8 @@ export async function poll(): Promise<void> {
     return;
   }
 
-  // ensure config is hydrated (important after SW restart from alarm)
-  await configStore.ready;
-
-  const config = configStore.value;
+  // load config from storage
+  const config = await loadConfig();
   const subs = config.subreddits;
   const interval = Math.max(config.pollingInterval, MIN_POLLING_INTERVAL);
 
@@ -112,29 +134,32 @@ export async function poll(): Promise<void> {
     log.poller.info(`received ${hits.length} total hits, seenIds: ${seenIds.size}`);
 
     // collect unseen hits
-    const newHits = hits.filter(hit => !seenIds.has(hit.id));
+    const unseenHits = hits.filter(hit => !seenIds.has(hit.id));
     
-    // mark as seen
-    for (const hit of newHits) {
+    // apply keyword filters (include/exclude)
+    const matchedHits = filterHits(unseenHits, config);
+    
+    // mark ALL unseen as seen (even filtered ones, to avoid re-checking)
+    for (const hit of unseenHits) {
       seenIds.add(hit.id);
     }
 
     // persist updated seen IDs
     await saveSeenIds(seenIds);
 
-    // broadcast new hits to all tabs
-    if (newHits.length > 0) {
-      const tabs = await chrome.tabs.query({});
-      
-      for (const hit of newHits) {
-        for (const tab of tabs) {
-          if (tab.id) {
-            chrome.tabs.sendMessage(tab.id, { type: 'NEW_HIT', payload: hit }).catch(() => {});
-          }
-        }
+    // broadcast matched hits to side panel
+    if (matchedHits.length > 0) {
+      // send to side panel via runtime messaging
+      for (const hit of matchedHits) {
+        chrome.runtime.sendMessage({ type: 'NEW_HIT', payload: hit }).catch(() => {});
       }
       
-      log.poller.info(`broadcasted ${newHits.length} new hits to ${tabs.length} tabs`);
+      log.poller.info(`broadcasted ${matchedHits.length} matched hits`);
+      
+      // play notification sound if enabled
+      if (config.audioEnabled) {
+        playNotificationSound('notification');
+      }
     }
 
     // schedule next normal poll
@@ -167,9 +192,6 @@ export async function startPolling(): Promise<void> {
   log.poller.info('starting engine');
   isRunning = true;
   consecutiveErrors = 0;
-  
-  // ensure config is loaded
-  await configStore.ready;
   
   // run first poll immediately, then schedule subsequent via alarms
   await poll();

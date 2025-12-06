@@ -71,47 +71,11 @@ function registerHandlers(): void {
     handleAlarm(alarm);
   });
 
-  // icon click -> inject content script and toggle overlay
-  chrome.action.onClicked.addListener(async (tab) => {
-    log.bg.info('icon clicked, tab:', tab.id, tab.url);
-    if (!tab.id || !tab.url) {
-      log.bg.debug('no tab id or url');
-      return;
-    }
-    
-    // skip chrome:// and edge:// pages
-    if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
-      log.bg.debug('cannot inject into browser pages');
-      return;
-    }
-
-    try {
-      // try to send message first (content script may already be loaded)
-      await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' });
-      log.bg.info('message sent to existing content script');
-    } catch {
-      // content script not loaded, inject it
-      log.bg.info('injecting content script...');
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['assets/content.js']
-        });
-        log.bg.info('content script injected, sending toggle...');
-        // wait a bit for script to initialize
-        setTimeout(async () => {
-          try {
-            await chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_OVERLAY' });
-            log.bg.info('toggle sent after injection');
-          } catch (e) {
-            log.bg.error('failed to send toggle after injection:', e);
-          }
-        }, 100);
-      } catch (e) {
-        log.bg.error('failed to inject:', e);
-      }
-    }
-  });
+  // icon click -> open side panel
+  // note: with sidePanel.setPanelBehavior, clicking the icon automatically opens the panel
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+    .then(() => log.bg.debug('side panel behavior set'))
+    .catch((err) => log.bg.warn('failed to set side panel behavior:', err));
 }
 
 /**

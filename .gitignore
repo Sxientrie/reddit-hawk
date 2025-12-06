@@ -26,4 +26,4 @@ Thumbs.db
 # project-specific exclusions
 #/docs/
 design-system.md
-.agent_context.md
+#.agent_context.md

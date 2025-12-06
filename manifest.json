@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sxentrie",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "First Responder Reddit monitor for freelancers and agencies.",
   "icons": {
     "16": "assets/icons/icon-16.png",
@@ -12,20 +12,20 @@
     "alarms",
     "storage",
     "offscreen",
-    "scripting",
-    "activeTab",
     "tabs",
     "notifications",
-    "identity"
+    "sidePanel"
   ],
   "host_permissions": [
-    "<all_urls>",
     "https://oauth.reddit.com/*",
     "https://www.reddit.com/r/*/new.json"
   ],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
   },
   "action": {
     "default_title": "Sxentrie"

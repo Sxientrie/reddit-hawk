@@ -2,7 +2,7 @@
 // api endpoints, limits, defaults
 
 // debug mode - set via vite define
-export const IS_DEBUG = import.meta.env.IS_DEBUG ?? false;
+export const IS_DEBUG = true; // import.meta.env.IS_DEBUG ?? false;
 
 export const REDDIT_BASE_URL = 'https://www.reddit.com';
 export const REDDIT_OAUTH_URL = 'https://oauth.reddit.com';
