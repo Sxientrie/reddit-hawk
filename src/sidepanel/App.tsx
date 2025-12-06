@@ -109,14 +109,16 @@ export function App() {
       </nav>
 
       {/* content */}
-      <main className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+      <main className={`flex-1 ${activeTab === 'settings' ? 'overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent' : ''}`}>
         {activeTab === 'feed' ? (
           isLoading ? (
             <div className="flex items-center justify-center py-16 text-zinc-600 font-mono text-xs">
               Loading...
             </div>
           ) : (
-            <FeedList hits={hits} onDismiss={handleDismiss} />
+            <div className="h-full p-3">
+              <FeedList hits={hits} onDismiss={handleDismiss} />
+            </div>
           )
         ) : (
           <SettingsPanel />
