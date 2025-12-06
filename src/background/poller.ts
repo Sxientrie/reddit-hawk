@@ -12,7 +12,7 @@ import {
   ALARM_NAME,
   STORAGE_KEYS
 } from '@utils/constants';
-import type { Config, Hit } from '@/types/schemas';
+import type { Config, Hit, SystemStatus } from '@/types/schemas';
 
 // storage configuration
 const HITS_CACHE_KEY = 'sxentrie_hits_cache';
@@ -32,6 +32,7 @@ const DEFAULT_CONFIG: Config = {
 let isRunning = false;
 let consecutiveErrors = 0;
 let isBusy = false; // concurrency lock - prevents overlapping poll executions
+let lastWrittenStatus: SystemStatus['status'] | null = null; // write-on-change cache
 
 /**
  * loads config from chrome.storage.local
@@ -194,6 +195,26 @@ async function scheduleNextPoll(delayMinutes: number): Promise<void> {
 }
 
 /**
+ * updates system status in storage
+ * only writes if status enum has changed (prevents excessive writes)
+ */
+async function updateSystemStatus(status: SystemStatus): Promise<void> {
+  // optimization: only write if status enum changed
+  // prevents write spam on every successful poll when already idle
+  if (lastWrittenStatus === status.status) {
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({ [STORAGE_KEYS.SYSTEM_STATUS]: status });
+    lastWrittenStatus = status.status;
+    log.poller.debug(`status updated: ${status.status}`);
+  } catch (err) {
+    log.poller.warn('failed to write system status:', err);
+  }
+}
+
+/**
  * core polling function - called by alarm handler
  * loads state from storage, fetches, saves state back
  */
@@ -211,6 +232,12 @@ export async function poll(): Promise<void> {
 
   // acquire lock
   isBusy = true;
+
+  // update status to polling (only writes if changed from last state)
+  await updateSystemStatus({
+    status: 'polling',
+    startedAt: Date.now()
+  });
 
   try {
     // load config from storage
@@ -291,18 +318,40 @@ export async function poll(): Promise<void> {
         }
       }
 
+      // update status to idle (success)
+      await updateSystemStatus({
+        status: 'idle',
+        lastPollTimestamp: Date.now()
+      });
+
       // schedule next normal poll
       await scheduleNextPoll(interval / 60);
 
     } catch (err) {
       if (err instanceof RateLimitError) {
         log.poller.warn(`rate limited, sleeping for ${err.resetTime}s`);
+        
+        // update status to ratelimited
+        await updateSystemStatus({
+          status: 'ratelimited',
+          retryTimestamp: Date.now() + (err.resetTime * 1000),
+          message: `reddit api rate limit exceeded, retry in ${err.resetTime}s`
+        });
+        
         await scheduleNextPoll(err.resetTime / 60);
         return;
       }
 
       consecutiveErrors++;
       log.poller.error('fetch failed', err);
+      
+      // update status to error
+      await updateSystemStatus({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'unknown fetch error',
+        code: (err as any)?.code,
+        timestamp: Date.now()
+      });
       
       // schedule retry with backoff
       const delayMinutes = getBackoffMinutes(interval);

@@ -142,3 +142,55 @@ export const RuntimeMessageSchema = z.object({
 });
 
 export type RuntimeMessage = z.infer<typeof RuntimeMessageSchema>;
+
+/**
+ * system status schema
+ * tracks background poller health state
+ * discriminated union by 'status' field for type safety
+ */
+export const SystemStatusSchema = z.discriminatedUnion('status', [
+  // healthy idle state
+  z.object({
+    status: z.literal('idle'),
+    lastPollTimestamp: resilient(z.number(), Date.now())
+  }),
+  
+  // actively polling reddit
+  z.object({
+    status: z.literal('polling'),
+    startedAt: resilient(z.number(), Date.now())
+  }),
+  
+  // error state (network, auth, parse failures)
+  z.object({
+    status: z.literal('error'),
+    message: resilient(z.string(), 'unknown error'),
+    code: resilient(z.string().optional(), undefined),
+    timestamp: resilient(z.number(), Date.now())
+  }),
+  
+  // rate limited by reddit api
+  z.object({
+    status: z.literal('ratelimited'),
+    retryTimestamp: resilient(z.number(), Date.now() + 60000), // default 1 minute
+    message: resilient(z.string(), 'rate limit exceeded')
+  })
+]);
+
+export type SystemStatus = z.infer<typeof SystemStatusSchema>;
+
+/**
+ * parses system status with fallback to idle
+ */
+export function parseSystemStatus(data: unknown): SystemStatus {
+  const result = SystemStatusSchema.safeParse(data);
+  if (result.success) {
+    return result.data;
+  }
+  
+  // fallback to idle on parse failure
+  return {
+    status: 'idle',
+    lastPollTimestamp: Date.now()
+  };
+}

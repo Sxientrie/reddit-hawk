@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FeedList } from '@ui/components/FeedList';
 import { SettingsPanel } from '@ui/components/SettingsPanel';
+import { StatusIndicator } from '@ui/components/StatusIndicator';
 import type { Hit } from '@/types/schemas';
 import { log } from '@utils/logger';
 import { sendMessage } from '@utils/messager';
@@ -71,9 +72,12 @@ export function App() {
           </svg>
           <span className="font-mono text-xs font-bold tracking-widest text-zinc-400">SXENTRIE</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-          <span className="font-mono text-xs font-semibold text-zinc-500">{hits.length}</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="font-mono text-xs font-semibold text-zinc-500">{hits.length}</span>
+          </div>
+          <StatusIndicator />
         </div>
       </header>
 
