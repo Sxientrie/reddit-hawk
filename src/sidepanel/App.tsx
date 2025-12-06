@@ -6,6 +6,7 @@ import { FeedList } from '@ui/components/FeedList';
 import { SettingsPanel } from '@ui/components/SettingsPanel';
 import type { Hit } from '@/types/schemas';
 import { log } from '@utils/logger';
+import { sendMessage } from '@utils/messager';
 
 const STORAGE_KEY = 'sxentrie_hits_cache';
 const MAX_CACHED_HITS = 100;
@@ -17,16 +18,14 @@ export function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('feed');
 
-  // dismiss a hit (writes back to storage)
+  // dismiss a hit (flux pattern - background is single writer)
   const handleDismiss = useCallback((id: string) => {
-    setHits((prev) => {
-      const filtered = prev.filter((h) => h.id !== id);
-      
-      // write filtered list back to storage
-      chrome.storage.local.set({ [STORAGE_KEY]: filtered.slice(0, MAX_CACHED_HITS) })
-        .catch(() => {}); // silent fail
-      
-      return filtered;
+    // optimistic ui update for responsiveness
+    setHits((prev) => prev.filter((h) => h.id !== id));
+    
+    // dispatch to background for persistence (single writer)
+    sendMessage('DISMISS_HIT', { id }).catch((err) => {
+      log.ui.warn('failed to send dismiss message:', err);
     });
   }, []);
 

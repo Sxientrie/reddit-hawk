@@ -127,7 +127,8 @@ export const MessageTypeSchema = z.enum([
   'PLAY_SOUND',
   'KEEP_ALIVE',
   'LOG_ENTRY',
-  'TOGGLE_OVERLAY'
+  'TOGGLE_OVERLAY',
+  'DISMISS_HIT'
 ]);
 
 export type MessageType = z.infer<typeof MessageTypeSchema>;

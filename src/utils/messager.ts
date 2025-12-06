@@ -27,6 +27,7 @@ export interface MessagePayloadMap {
   KEEP_ALIVE: { timestamp: number };
   LOG_ENTRY: LogEntry;
   TOGGLE_OVERLAY: undefined;
+  DISMISS_HIT: { id: string };
 }
 
 /**
@@ -42,6 +43,7 @@ export interface MessageResponseMap {
   KEEP_ALIVE: void;
   LOG_ENTRY: void;
   TOGGLE_OVERLAY: void;
+  DISMISS_HIT: void;
 }
 
 /**

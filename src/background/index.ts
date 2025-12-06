@@ -8,6 +8,7 @@ import { onMessage, type LogEntry } from '@utils/messager';
 import { mountDebugGlobals } from '@utils/debug';
 import { IS_DEBUG } from '@utils/constants';
 import { log } from '@utils/logger';
+import type { Hit } from '@/types/schemas';
 
 /**
  * formats log entry for console output
@@ -63,6 +64,30 @@ function registerHandlers(): void {
   // placeholder handlers for phase ii
   onMessage('KEEP_ALIVE', () => {
     // reset idle timer
+  });
+
+  // dismiss hit handler (single writer for hits cache)
+  onMessage('DISMISS_HIT', async (payload) => {
+    const STORAGE_KEY = 'sxentrie_hits_cache';
+    const MAX_CACHED_HITS = 100;
+    
+    try {
+      // load current cache
+      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const currentHits: Hit[] = result[STORAGE_KEY] || [];
+      
+      // filter out dismissed hit
+      const filtered = currentHits.filter((hit) => hit.id !== payload.id);
+      
+      // persist atomically
+      await chrome.storage.local.set({ 
+        [STORAGE_KEY]: filtered.slice(0, MAX_CACHED_HITS) 
+      });
+      
+      log.bg.debug(`dismissed hit ${payload.id}, ${filtered.length} remain`);
+    } catch (err) {
+      log.bg.warn('failed to dismiss hit:', err);
+    }
   });
 
   // alarm handler - routes alarms to appropriate handlers
