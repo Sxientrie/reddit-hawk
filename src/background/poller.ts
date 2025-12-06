@@ -67,14 +67,23 @@ async function loadSeenIds(): Promise<Set<string>> {
 
 /**
  * saves seen IDs to session storage (preferred) or local storage (fallback)
- * limits to 1000 most recent to prevent unbounded growth
+ * enforces strict FIFO limit of 1000 items to prevent storage quota bloat
+ * keeps newest 1000 IDs based on insertion order (Set maintains order)
  */
 async function saveSeenIds(ids: Set<string>): Promise<void> {
   try {
     const storage = chrome.storage.session ?? chrome.storage.local;
-    // convert to array, limit size to prevent storage bloat
+    
+    // convert to array - Set maintains insertion order (ECMA-262)
+    // slice(-1000) keeps the LAST 1000 items (newest)
+    // oldest IDs inserted first are dropped when exceeding limit
     const arr = Array.from(ids).slice(-1000);
+    
     await storage.set({ [STORAGE_KEYS.SEEN_SET]: arr });
+    
+    if (ids.size > 1000) {
+      log.poller.debug(`trimmed seenIds: ${ids.size} → 1000 (FIFO)`);
+    }
   } catch (err) {
     log.poller.warn('failed to save seenIds:', err);
   }
@@ -108,6 +117,23 @@ async function saveLatestHitTimestamp(timestamp: number): Promise<void> {
 }
 
 /**
+ * minifies hit object for storage
+ * strips large optional fields (selftext, thumbnails) that ui doesn't use
+ * matching happens before storage, so selftext removal is safe
+ * keeps only: id, title, subreddit, author, permalink, created_utc
+ */
+function minifyHit(hit: Hit): Partial<Hit> {
+  return {
+    id: hit.id,
+    title: hit.title,
+    subreddit: hit.subreddit,
+    author: hit.author,
+    permalink: hit.permalink,
+    created_utc: hit.created_utc
+  };
+}
+
+/**
  * loads cached hits from chrome.storage.local
  * used for appending new hits without losing history
  */
@@ -127,12 +153,15 @@ async function loadCachedHits(): Promise<Hit[]> {
 /**
  * saves hits to chrome.storage.local
  * service worker is source of truth for hit persistence
+ * minifies hits to reduce storage quota usage
  */
 async function saveCachedHits(hits: Hit[]): Promise<void> {
   try {
-    const limited = hits.slice(0, MAX_CACHED_HITS);
+    // minify hits to strip large optional fields (selftext, thumbnail, etc)
+    const minified = hits.map(minifyHit);
+    const limited = minified.slice(0, MAX_CACHED_HITS);
     await chrome.storage.local.set({ [HITS_CACHE_KEY]: limited });
-    log.poller.debug(`saved ${limited.length} hits to storage`);
+    log.poller.debug(`saved ${limited.length} minified hits to storage`);
   } catch (err) {
     log.poller.warn('failed to save cached hits:', err);
   }
